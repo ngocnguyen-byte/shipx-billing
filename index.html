@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShipX Billing</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- ===== Login ===== -->
+<div id="login">
+  <div class="login-card">
+    <div class="brand">ShipX</div>
+    <h1>Billing</h1>
+    <p class="tag2">Sign in to your team workspace.</p>
+    <form id="loginForm" autocomplete="on">
+      <label for="email">Email</label>
+      <input id="email" type="email" placeholder="you@amilo.co" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" required>
+      <button type="submit" id="loginBtn">Sign in</button>
+    </form>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-note" id="loginNote">Shared rate cards &amp; billing history · updates live for the whole team.</div>
+  </div>
+</div>
+
+<!-- ===== App (hidden until logged in) ===== -->
+<div id="appRoot" style="display:none; min-height:100vh;">
+  <aside>
+    <div class="logo">
+      <div class="brand">ShipX</div>
+      <h1>Billing</h1>
+      <p><span class="sync-dot"></span><span class="live-badge">Live · shared</span></p>
+    </div>
+    <nav id="nav"></nav>
+    <div class="userbox">
+      <div class="who" id="whoami">—</div>
+      <button id="logoutBtn">Sign out</button>
+    </div>
+  </aside>
+  <main>
+    <div class="topbar">
+      <div>
+        <div class="crumb" id="crumb">Dashboard</div>
+        <h2 id="pageTitle">Dashboard</h2>
+      </div>
+      <div class="actions" id="topActions"></div>
+    </div>
+    <div class="wrap" id="view"></div>
+  </main>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
