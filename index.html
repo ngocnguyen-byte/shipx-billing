@@ -7,6 +7,9 @@
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}</script>
 </head>
 <body>
 
@@ -22,6 +25,12 @@
       <label for="password">Password</label>
       <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" required>
       <button type="submit" id="loginBtn">Sign in</button>
+    </form>
+    <button type="button" id="forgotBtn" style="width:auto;background:none;color:var(--accent);border:none;padding:6px 0;margin-top:10px;font-size:13px;text-decoration:underline;cursor:pointer">Forgot password?</button>
+    <form id="resetForm" style="display:none">
+      <label for="newpass">New password</label>
+      <input id="newpass" type="password" placeholder="At least 6 characters" autocomplete="new-password" required>
+      <button type="submit" id="resetBtn">Set new password</button>
     </form>
     <div class="login-err" id="loginErr"></div>
     <div class="login-note" id="loginNote">Shared rate cards &amp; billing history · updates live for the whole team.</div>

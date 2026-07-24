@@ -17,7 +17,7 @@
   aside .logo h1{ font-size:19px; margin:3px 0 0; color:#fff; font-weight:700; }
   aside .logo p{ font-size:11.5px; color:#7d93b0; margin:3px 0 0; }
   nav{ padding:6px 12px 20px; }
-  .nav-group{ font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:#61789b; margin:16px 10px 6px; }
+  .nav-group{ font-size:13px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:#3f4f6b; margin:18px 10px 7px; }
   .nav-item{ display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer;
     font-size:13.5px; color:#cdd8e6; transition:.12s; margin-bottom:1px; }
   .nav-item:hover{ background:rgba(255,255,255,.06); color:#fff; }
@@ -99,6 +99,11 @@
   select,input[type=text],input[type=month]{ padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; background:#fff; }
   .empty{ text-align:center; padding:48px 20px; color:var(--ink2); }
   .empty .big{ font-size:34px; margin-bottom:8px; }
+.tabs{ display:flex; gap:6px; margin:14px 0 18px; border-bottom:2px solid var(--line); }
+.tab{ padding:10px 24px; font-weight:600; font-size:14px; color:var(--ink2); cursor:pointer;
+    border-radius:10px 10px 0 0; border:1px solid transparent; border-bottom:none; margin-bottom:-2px; user-select:none; }
+.tab:hover{ color:var(--navy2); background:#eef3f8; }
+.tab.active{ color:var(--accent); background:#fff; border-color:var(--line); border-bottom:2px solid #fff; }
   @media(max-width:820px){ aside{ display:none; } .grid2{ grid-template-columns:1fr; } }
 /* ---------- Auth / login screen ---------- */
 #login{ display:flex; align-items:center; justify-content:center; min-height:100vh; width:100%;
@@ -126,3 +131,6 @@ aside .userbox button:hover{ background:rgba(255,255,255,.16); color:#fff; }
 .sync-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:#37b26b; margin-right:6px;
   box-shadow:0 0 0 0 rgba(55,178,107,.5); }
 .live-badge{ font-size:10.5px; color:#8fe0b0; letter-spacing:.4px; text-transform:uppercase; }
+
+tr.gpneg td{ background:#fdecea !important; }
+tr.gpneg td.num{ color:#8a2419; font-weight:600; }
