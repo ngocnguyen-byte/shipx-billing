@@ -1152,8 +1152,8 @@ function renderDocketService(v, svc){
   if(!state[svc.id]) state[svc.id]={rateCards:getRateCards(svc), docketFiles:[], docketLines:[], invoiceName:null, invoiceLines:[], result:null};
   const st=state[svc.id];
   const tab=svcTab[svc.id]||'billing';
-  let h=`<div class="banner info" style="margin-top:0">${esc(svc.description)}</div>`;
-  h+=svcTabsHtml(svc,tab,'📄 Reconcile &amp; bill');
+  let h=svcTabsHtml(svc,tab,'📄 Reconcile &amp; bill');
+  if(tab==='howto'){ h+=`<div class="banner info" style="margin-top:0">${esc(svc.description)}</div>`; v.innerHTML=h; return; }
   if(tab==='rates'){
   svc.rateCards.forEach(c=>{
     h+=`<div class="card"><div class="flexhead"><div><div class="step">Rate card</div><h3>${esc(c.label)}</h3>
@@ -1593,6 +1593,29 @@ const _AME_DIRECT_DEF=["AU","BE","FR","GB","NL","NZ"];
 function prAmeDirectList(){ const s=prGet("ame_direct_countries",null); return (Array.isArray(s)&&s.length)?s.map(x=>String(x).trim().toUpperCase()):_AME_DIRECT_DEF.slice(); }
 function prAmeDirectSet(){ return new Set(prAmeDirectList()); }
 function prAmeSetDirect(str){ const arr=String(str||"").split(/[,\s;]+/).map(x=>x.trim().toUpperCase()).filter(Boolean); prSet("ame_direct_countries",arr); render(); }
+/* Direct-country picker: shows the CURRENT list, then a tick-list of every country
+   with a Direct lane in the cost rows (+ any currently allowed) — tick to add, untick to remove. */
+function prAmeDirectChips(id){
+  const on=prAmeDirectSet(), cand={};
+  prNSOrigs().forEach(o=>{ prAmeRows(o[0]).forEach(r=>{ const IN=r.in||{};
+    if(String(IN.I||"").trim().toLowerCase()==="direct" && IN.D){ const c=String(IN.D).toUpperCase(); if(!cand[c]) cand[c]=String(IN.E||c); } }); });
+  prAmeDirectList().forEach(c=>{ if(!cand[c]) cand[c]=c; });
+  const tc=x=>String(x).toLowerCase().replace(/\b\w/g,m=>m.toUpperCase());
+  const codes=Object.keys(cand).sort();
+  const cur=codes.filter(c=>on.has(c));
+  const open=!!PRS[id]._dirOpen;
+  let h=`<span class="sub" style="text-transform:none;letter-spacing:0;font-weight:400;margin:2px 0 3px">Current Direct: <b style="color:var(--pink)">${cur.length?cur.join(", "):"none"}</b></span>`;
+  h+=`<span class="dd-wrap"><button class="subtle sm" onclick="PRS['${id}']._dirOpen=!PRS['${id}']._dirOpen;render()">${open?"Close ▴":"Choose countries ▾"}</button>`;
+  if(open){ h+=`<span class="dd-panel">`+codes.map(c=>
+    `<label class="ckitem ${on.has(c)?"on":""}"><input type="checkbox" ${on.has(c)?"checked":""} onchange="prAmeDirectToggle('${c}')">${esc(c)} · ${esc(tc(cand[c]))}</label>`).join("")+`</span>`; }
+  h+=`</span>`;
+  return h;
+}
+function prAmeDirectToggle(code){
+  const l=prAmeDirectList(), i=l.indexOf(code);
+  if(i>=0) l.splice(i,1); else l.push(code);
+  prSet("ame_direct_countries",l); render();
+}
 function prAmeCards(orig,marginPct,beFilter,typFilter,routePref,routeByCode,pickup,outCur){
   const comp=prAmeCompute(orig);
   const noPU=(String(pickup||"").toLowerCase()==="without");   // without pickup → totals BO/BP instead of BY/BZ
@@ -1703,19 +1726,25 @@ function prFdxBuildHtml(){
   const pct=x=>String(round2(prNum(x)*100));
   let h=`<div class="card"><div class="step">Pricing · FedEx</div><h3>Build a customer sell rate card</h3>
     <p class="sub">Sell = (FedEx net cost × (1+vendor markup) + per-kg &amp; per-piece add-ons) × (1+margin) × FX — exactly your Cost_CALC formula. Edit the FedEx net rates in the Cost cards tab.</p>
-    <div class="filters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-      <label>Product<br><select onchange="prSetS('pfedex','prod',this.value)">${_PRC_FDXPROD.map(x=>`<option value="${x[0]}" ${prod===x[0]?"selected":""}>${x[1]}</option>`).join("")}</select></label>
-      <label>Customer tier<br><select onchange="prFdxTier(this.value)"><option value="">— margin below —</option>${tiers.map(t=>`<option value="${t[1]}">${t[0]} (${round2(t[1]*100)}%)</option>`).join("")}</select></label>
-      <label>Margin %<br><input type="number" step="0.1" style="width:90px" value="${pct(p.margin)}" onchange="prFdxParam('margin',this.value/100)"></label>
-      <label>Vendor markup %<br><input type="number" step="0.1" style="width:90px" value="${pct(p.vendor)}" onchange="prFdxParam('vendor',this.value/100)"></label>
-      <label>FX<br><input type="number" step="0.01" style="width:70px" value="${prNum(p.fx,1)}" onchange="prFdxParam('fx',this.value)"></label>
-      <label>Clearance /kg<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.clearanceKg)}" onchange="prFdxParam('clearanceKg',this.value)"></label>
-      <label>Linehaul /kg<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.linehaulKg)}" onchange="prFdxParam('linehaulKg',this.value)"></label>
-      <label>Handling /pc<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.handlingPc)}" onchange="prFdxParam('handlingPc',this.value)"></label>
-      <label>Pickup /pc<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.pickupPc)}" onchange="prFdxParam('pickupPc',this.value)"></label>
-      <label>Pickup /kg<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.pickupKg)}" onchange="prFdxParam('pickupKg',this.value)"></label>
-      <label>Customer (file name)<br><input type="text" style="width:150px" placeholder="e.g. SG LINK" value="${esc(P.custName||"")}" onchange="prInp('pfedex','custName',this.value)"></label>
-      <button class="subtle sm" onclick="prFdxParamReset()">Reset params</button>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:6px">
+      <div class="pgrp"><span class="gt">1 · Product &amp; Customer</span><div class="grow">
+        <label>Product<br><select onchange="prSetS('pfedex','prod',this.value)">${_PRC_FDXPROD.map(x=>`<option value="${x[0]}" ${prod===x[0]?"selected":""}>${x[1]}</option>`).join("")}</select></label>
+        <label>Customer tier<br><select onchange="prFdxTier(this.value)"><option value="">— margin below —</option>${tiers.map(t=>`<option value="${t[1]}">${t[0]} (${round2(t[1]*100)}%)</option>`).join("")}</select></label>
+        <label>Customer (file name)<br><input type="text" style="width:140px" placeholder="e.g. SG LINK" value="${esc(P.custName||"")}" onchange="prInp('pfedex','custName',this.value)"></label>
+      </div></div>
+      <div class="pgrp"><span class="gt">2 · Margin &amp; FX</span><div class="grow">
+        <label>Margin %<br><input type="number" step="0.1" style="width:80px" value="${pct(p.margin)}" onchange="prFdxParam('margin',this.value/100)"></label>
+        <label>Vendor markup %<br><input type="number" step="0.1" style="width:80px" value="${pct(p.vendor)}" onchange="prFdxParam('vendor',this.value/100)"></label>
+        <label>FX<br><input type="number" step="0.01" style="width:70px" value="${prNum(p.fx,1)}" onchange="prFdxParam('fx',this.value)"></label>
+      </div></div>
+      <div class="pgrp"><span class="gt">3 · Add-on costs</span><div class="grow">
+        <label>Clearance /kg<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.clearanceKg)}" onchange="prFdxParam('clearanceKg',this.value)"></label>
+        <label>Linehaul /kg<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.linehaulKg)}" onchange="prFdxParam('linehaulKg',this.value)"></label>
+        <label>Handling /pc<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.handlingPc)}" onchange="prFdxParam('handlingPc',this.value)"></label>
+        <label>Pickup /pc<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.pickupPc)}" onchange="prFdxParam('pickupPc',this.value)"></label>
+        <label>Pickup /kg<br><input type="number" step="0.01" style="width:80px" value="${prNum(p.pickupKg)}" onchange="prFdxParam('pickupKg',this.value)"></label>
+        <button class="subtle sm" onclick="prFdxParamReset()" style="align-self:flex-end">Reset params</button>
+      </div></div>
     </div>
     <div style="margin:12px 0 6px;padding:8px 12px;background:#fff7e6;border:1px solid #f0c36d;border-radius:8px;color:#7a5b00">
       <b>⚠ Note:</b> these rates <b>exclude all surcharges</b> (fuel, demand, U.S. inbound processing, etc.). See the <b>Surcharge</b> sheet in the downloaded rate card.</div>
@@ -1806,13 +1835,23 @@ function prAmeBuildHtml(id){
     </div>`}
     <div class="filters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
       ${isAmd?``:`<label>Default route<br><select onchange="prSetS('${id}','rte',this.value)"><option value="Hub" ${rte==='Hub'?'selected':''}>Hub</option><option value="Direct" ${rte==='Direct'?'selected':''}>Direct</option></select></label>
-      <label>Direct-allowed countries (ISO)<br><input type="text" style="width:200px" value="${esc(prAmeDirectList().join(","))}" onchange="prAmeSetDirect(this.value)" title="Only these countries can be quoted Direct; all others are Hub only. Edit anytime."></label>`}
+      <div class="fcol">Direct-allowed countries${prAmeDirectChips(id)}</div>`}
       <label>Pick up<br><select onchange="prSetS('${id}','pickup',this.value)"><option value="with" ${pu==='with'?'selected':''}>With Pickup</option><option value="without" ${pu==='without'?'selected':''}>Without Pickup</option><option value="both" ${pu==='both'?'selected':''}>Both (2 sheets)</option></select></label>
       <label>Output currency<br><select onchange="prSetS('${id}','outCur',this.value)">${prAmeCurList().map(c=>`<option ${oc===c?'selected':''}>${c}</option>`).join("")}</select></label>
       <label>Margin %<br><input type="number" step="0.1" style="width:80px" value="${P.margin}" onchange="prSetS('${id}','margin',Number(this.value))"></label>
       <label>Card version / title<br><input type="text" style="width:230px" value="${esc(P.version)}" onchange="prInp('${id}','version',this.value)"></label>
     </div>
     <p class="sub" style="margin-top:2px">${isAmd?`All AMD lanes route via <b>Hub</b>; rates are weight-banded per destination (Max Weight column).`:``}${isAmd?``:`Default route <b>${esc(rte)}</b>. Direct is allowed only for <b>${esc(prAmeDirectList().join(", "))}</b> (edit above). ${dualCnt?`${dualCnt} destination(s) here can go Direct <b>or</b> Hub — set each in the <b>Route</b> column below${ovCnt?` (<b>${ovCnt}</b> set individually — <a href="#" onclick="prAmeResetRoutes('${id}');return false">reset all to default</a>)`:``}.`:`No destination here has an allowed Direct+Hub alternative at this type; each keeps its only route.`}`}</p>
+    ${(pu==="with"||pu==="both")?(function(){
+      const pr=prAmeTables().pickup.find(r=>String(r[1]||"").trim().toUpperCase()===String(P.orig).toUpperCase());
+      if(!pr) return `<p class="sub">Pickup fee ex${esc(P.orig)}: <b>none on file</b> — add it in Cost cards → Pick Up Charges.</p>`;
+      const parts=[];
+      if(pr[2]!=null&&pr[2]!=="") parts.push(pr[2]+" /pc");
+      if(pr[3]!=null&&pr[3]!==""&&Number(pr[3])!==0) parts.push(pr[3]+" /kg");
+      if(pr[4]!=null&&pr[4]!==""&&Number(pr[4])!==0) parts.push(pr[4]+" /point");
+      if(pr[6]!=null&&pr[6]!=="") parts.push("vol "+pr[6]);
+      return `<p class="sub">Current pickup fee ex${esc(P.orig)}: <b style="color:var(--pink)">${parts.length?esc(parts.join(" · ")):"0"} ${esc(String(pr[7]||""))}</b> — included in the ${pu==="both"?"With-Pickup sheet":"rates"}; edit it in Cost cards → Pick Up Charges.</p>`;
+    })():``}
     <div style="margin:12px 0 4px">
       <button class="primary" onclick="prDlAmeCard()">⭳ Customer rate card (Excel)</button>
       <button class="subtle" onclick="prDlAmeNetCost()">⭳ Net cost (0% margin)</button>
@@ -2075,6 +2114,35 @@ function prAmeTblAddSave(id){
   }
   P._tblAdd=null; P._tblAddVals=null; toastP("Line added."); render();
 }
+/* Download the CURRENT Bpost last-mile table (all lanes, as shown/edited on the web). */
+function prAmeDlLm(){
+  const T=prAmeTables(), ns=prNS().toUpperCase();
+  const aoa=[["ISO","Destination","Product","DSP Product","Route","Max kg","Currency","Item (per pc)","KG (per kg)"]];
+  T.combined.forEach(r=>{ if(!(r[1]&&String(r[1]).length<=3)) return;
+    const rt=/direct/i.test(String(r[4]||""))?"Direct":"Hub";
+    aoa.push([r[1],r[9]||"",r[5]||"",r[4]||"",rt,(r[8]==null?"":r[8]),r[6]||"",(r[15]==null?"":r[15]),(r[16]==null?"":r[16])]); });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Last Mile");
+  XLSX.writeFile(wb,_prSafe(ns+" Last Mile rates_"+_prToday())+".xlsx");
+}
+/* Download the CURRENT cost build-up rows for the active origin — full CALC columns A..CG,
+   inputs as edited on the web and formula columns as live-computed values. */
+function prAmeDlRows(){
+  const id=prAmeId(), orig=PRS[id].orig, ns=prNS().toUpperCase();
+  const rows=prAmeRows(orig), comp=prAmeCompute(orig);
+  const aoa=[_PRC_AMEEDIT.map(c=>c[0]), _PRC_AMEEDIT.map(c=>c[1])];
+  rows.forEach((r,i)=>{
+    const IN=r.in||{}, CV=r.cv||{}, co=(comp[i]&&comp[i].out)||{};
+    aoa.push(_PRC_AMEEDIT.map(c=>{
+      const col=c[0];
+      if(c[3]==="c" && IN[col]===undefined){ const v=co[col]; return (v==null||v==="#ERR")?"":v; }
+      return IN[col]!==undefined?IN[col]:(CV[col]!==undefined?CV[col]:"");
+    }));
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"CALC."+orig);
+  XLSX.writeFile(wb,_prSafe(ns+" Cost Card_ex"+orig+"_"+_prToday())+".xlsx");
+}
 function prAmeCostHtml(id){
   const P=PRS[id], orig=P.orig;
   const rows=prAmeRows(orig);
@@ -2091,6 +2159,7 @@ function prAmeCostHtml(id){
       <label>Origin<br><input type="text" disabled style="width:74px;font-weight:600" value="ex${esc(orig)}"></label>
       <input type="text" placeholder="filter destination…" value="${esc(P.filter||"")}" oninput="PRS['${id}'].filter=this.value;render()">
       <button class="primary sm" onclick="prAmeRowsSave()">✔ Save</button>
+      <button class="subtle sm" onclick="prAmeDlRows()">⭳ Download</button>
       <button class="subtle sm" onclick="prSet(_prnsK('rows_')+'${orig}',null);render()">Reset to built-in</button>
     </div>
     <div class="tbl-scroll" style="max-height:440px"><table id="pramerows"><thead>
@@ -2148,13 +2217,18 @@ function prAmeCostHtml(id){
     const hay=(String(r[1])+" "+String(r[9]||"")+" "+String(r[4]||"")+" "+String(r[5]||"")).toLowerCase();
     if(!lmf||hay.indexOf(lmf)>=0) lmRows.push(i); });
   const lmShown=lmRows.slice(0,300);
-  h+=`<div class="card"><h3>Bpost last-mile cost card</h3>
-    <p class="sub"><b>Item</b> = last-mile cost per piece, <b>KG</b> = per kg (in the shown currency). Tracked = Dragon Scan, Untracked = MiniPak. Upload a fresh Bpost cost card to refresh every rate, or Edit / Delete a lane, or ＋ Add one. Shared across all origins — ${lmRows.length} lanes${lmShown.length<lmRows.length?", showing first "+lmShown.length:""}.</p>
+  const isAmdLm=(prNS()==="amd");
+  h+=`<div class="card"><h3>${isAmdLm?"Maxipak last-mile cost card":"Bpost last-mile cost card"}</h3>
+    <p class="sub">${isAmdLm?`<b>Item</b> = last-mile cost per piece for the weight band (Maxipak DDP is per-piece only — no per-kg). Upload the Maxipak rate file (EU · EUR, UK · GBP, US · USD) or Edit / Delete a lane, or ＋ Add one. ${lmRows.length} lanes${lmShown.length<lmRows.length?", showing first "+lmShown.length:""}.`:`<b>Item</b> = last-mile cost per piece, <b>KG</b> = per kg (in the shown currency). Tracked = Dragon Scan, Untracked = MiniPak. Upload a fresh Bpost cost card to refresh every rate, or Edit / Delete a lane, or ＋ Add one. Shared across all origins — ${lmRows.length} lanes${lmShown.length<lmRows.length?", showing first "+lmShown.length:""}.`}</p>
     <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap">
-      <label class="subtle sm" style="cursor:pointer;border:1px solid var(--line);padding:6px 10px;border-radius:8px">⭱ Load Bpost cost card…<input type="file" accept=".xlsx" style="display:none" onchange="prAmeLmLoad(this)"></label>
-      <label>Service<br><select id="prlmSvc"><option value="">Auto (from sheet names)</option><option value="Dragon Scan">Tracked (Dragon Scan)</option><option value="MiniPak">Untracked (MiniPak)</option></select></label>
-      <label>Currency<br><select id="prlmCur"><option value="">Keep as-is</option>${prAmeCurList().map(c=>`<option>${c}</option>`).join("")}</select></label>
+      ${isAmdLm?`<label class="subtle sm" style="cursor:pointer;border:1px solid var(--line);padding:6px 10px;border-radius:8px">⭱ Load Maxipak rate file…<input type="file" accept=".xlsx" style="display:none" onchange="prAmdLmLoad(this)"></label>
+      <label>Currency<br><select id="prlmCur"><option value="">Auto (from file name)</option>${prAmeCurList().map(c=>`<option>${c}</option>`).join("")}</select></label>`
+      :`<label class="subtle sm" style="cursor:pointer;border:1px solid var(--line);padding:6px 10px;border-radius:8px">⭱ Load Bpost cost card…<input type="file" accept=".xlsx" style="display:none" onchange="prAmeLmLoad(this)"></label>
+      <label>Service<br><select id="prlmSvc"><option value="">Auto (from sheet names)</option><option value="Dragon Scan">Dragon Scan — Tracked</option><option value="MiniPak">MiniPak — Untracked</option></select></label>
+      <label>Route<br><select id="prlmRt"><option value="">Auto (from names)</option><option value="Hub">Via Hub</option><option value="Direct">Direct</option></select></label>
+      <label>Currency<br><select id="prlmCur"><option value="">Keep as-is</option>${prAmeCurList().map(c=>`<option>${c}</option>`).join("")}</select></label>`}
       <button class="subtle sm" onclick="prAmeTblAddOpen('${id}','lm')">＋ Add line</button>
+      <button class="subtle sm" onclick="prAmeDlLm()">⭳ Download rates</button>
       <button class="subtle sm" onclick="prSet(_prnsK('combined'),null);render()">Reset to built-in</button>
       <input type="text" placeholder="filter destination / ISO…" value="${esc(P.lmf||'')}" oninput="PRS['${id}'].lmf=this.value;render()">
     </div>
@@ -2226,13 +2300,13 @@ function prAmeCombinedSave(){
 function prAmeLmLoad(inp){
   const f=inp.files&&inp.files[0]; if(!f) return;
   const fnameRoute=/direct/i.test(String(f.name||""))?"Direct":"Hub";
-  const svcSel=document.getElementById("prlmSvc"), curSel=document.getElementById("prlmCur");
-  const svcOv=svcSel?svcSel.value:"", curOv=curSel?curSel.value:"";
+  const svcSel=document.getElementById("prlmSvc"), curSel=document.getElementById("prlmCur"), rtSel=document.getElementById("prlmRt");
+  const svcOv=svcSel?svcSel.value:"", curOv=curSel?curSel.value:"", rtOv=rtSel?rtSel.value:"";
   function classify(sn){ const s=String(sn).toLowerCase();
     let fam=null; if(/dragon/.test(s)) fam="Dragon Scan"; else if(/mini\s*pak|minipak/.test(s)) fam="MiniPak";
     if(svcOv) fam=svcOv;                       /* Service override applies to every sheet */
     if(!fam) return null;
-    const route=/direct/.test(s)?"Direct":(/hub/.test(s)?"Hub":fnameRoute);
+    const route=rtOv||( /direct/.test(s)?"Direct":(/hub/.test(s)?"Hub":fnameRoute) );
     return {fam,route}; }
   function findCols(aoa){ let iso=-1,kg=-1,item=-1;
     for(let i=0;i<Math.min(aoa.length,8);i++){ (aoa[i]||[]).forEach((v,j)=>{ const t=String(v==null?"":v).trim().toLowerCase();
@@ -2267,7 +2341,60 @@ function prAmeLmLoad(inp){
       report.push({sheet:p.sheet,fam:p.fam,route:p.route,n:Object.keys(p.map).length,updated,unmatched,misses}); });
     prSet(_prnsK("combined"),tbl);
     const tot=report.reduce((a,r)=>a+r.updated,0);
-    let msg=tot+" last-mile rate(s) updated"+(curOv?" (currency set to "+curOv+")":"")+" — "+report.map(r=>r.sheet+" → "+r.fam+" "+r.route+": "+r.updated+"/"+r.n+(r.unmatched?(", "+r.unmatched+" no lane e.g. "+r.misses.slice(0,3).join("/")):"" )).join("; ");
+    let msg=tot+" last-mile rate(s) updated"+(svcOv?" [service forced: "+(svcOv==="MiniPak"?"MiniPak/Untracked":"Dragon Scan/Tracked")+"]":"")+(rtOv?" [route forced: "+rtOv+"]":"")+(curOv?" (currency set to "+curOv+")":"")+" — "+report.map(r=>r.sheet+" → "+r.fam+" "+r.route+": "+r.updated+"/"+r.n+(r.unmatched?(", "+r.unmatched+" no lane e.g. "+r.misses.slice(0,3).join("/")):"" )).join("; ");
+    if(skipped.length) msg+=". Skipped: "+skipped.join(", ");
+    toastP(msg+"."); render();
+  }catch(err){ alert("Could not read the file: "+err.message); } };
+  rd.readAsArrayBuffer(f);
+}
+/* Maxipak (AMD) last-mile uploader: rate sheets are a matrix — NAME | ISO | one column per weight band
+   (0.25…30 kg), per-piece prices. Updates the AMD lanes keyed BPC<ISO>AMD<ISO><band>. Zone-based
+   sheets (e.g. the US Pricesheet by Zone) are reported as needing a zone→country map. */
+function prAmdLmLoad(inp){
+  const f=inp.files&&inp.files[0]; if(!f) return;
+  const curSel=document.getElementById("prlmCur"); let curOv=curSel?curSel.value:"";
+  if(!curOv){ const n=String(f.name||"").toUpperCase();
+    curOv = n.indexOf("EUR")>=0?"EUR" : n.indexOf("GBP")>=0?"GBP" : n.indexOf("USD")>=0?"USD" : ""; }
+  const rd=new FileReader();
+  rd.onload=e=>{ try{
+    const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+    const entries=[]; const skipped=[];
+    wb.SheetNames.forEach(sn=>{
+      if(/terms|conditions|surcharge|products/i.test(sn)) return;
+      const aoa=sheetRows(wb.Sheets[sn]);
+      let hi=-1, isoCol=-1, bands=[];
+      for(let i=0;i<Math.min(aoa.length,20)&&hi<0;i++){
+        (aoa[i]||[]).forEach((v,j)=>{ if(String(v==null?"":v).trim().toUpperCase()==="ISO"){ hi=i; isoCol=j; } });
+        if(hi>=0){ (aoa[hi]||[]).forEach((v,j)=>{ if(j>isoCol && typeof v==="number") bands.push([j,v]); }); }
+      }
+      if(hi<0||!bands.length){
+        if((aoa.join("|")||"").indexOf("Zone")>=0||/pricesheet/i.test(sn)) skipped.push(sn+" (zone-based — needs a zone→country map)");
+        else skipped.push(sn+" (no ISO/band header)");
+        return;
+      }
+      for(let i=hi+1;i<aoa.length;i++){
+        const r=aoa[i]||[]; let iso=r[isoCol];
+        if(typeof iso!=="string") continue;
+        iso=iso.trim();
+        if(/^mainland gb$/i.test(iso)) iso="GB";
+        if(iso.length<2||iso.length>3){ continue; }
+        bands.forEach(bj=>{ const price=Number(r[bj[0]]);
+          if(isFinite(price)) entries.push({iso:iso.toUpperCase(), band:bj[1], price:price}); });
+      }
+    });
+    if(!entries.length){ alert("No Maxipak rate rows found. Expected a PRICING block with NAME | ISO | weight-band columns."+(skipped.length?" Skipped: "+skipped.join(", "):"")); return; }
+    const T=prAmeTables(); const tbl=JSON.parse(JSON.stringify(T.combined));
+    const byKey={}; tbl.forEach((r,i)=>{ if(r[2]) byKey[String(r[2]).toLowerCase()]=i; });
+    let updated=0, unmatched=0; const misses=[];
+    entries.forEach(en=>{
+      const key=("BPC"+en.iso+"AMD"+en.iso+String(en.band)).toLowerCase();
+      const i=byKey[key];
+      if(i===undefined){ unmatched++; if(misses.length<6&&misses.indexOf(en.iso)<0) misses.push(en.iso); return; }
+      tbl[i][15]=en.price; tbl[i][11]=en.price; if(curOv) tbl[i][6]=curOv; updated++;
+    });
+    prSet(_prnsK("combined"),tbl);
+    let msg=updated+" Maxipak lane rate(s) updated"+(curOv?" (currency "+curOv+")":"");
+    if(unmatched) msg+="; "+unmatched+" entries had no lane (e.g. "+misses.join(", ")+" — that country/band isn’t in this cost card)";
     if(skipped.length) msg+=". Skipped: "+skipped.join(", ");
     toastP(msg+"."); render();
   }catch(err){ alert("Could not read the file: "+err.message); } };
@@ -2513,6 +2640,9 @@ async function prAmeTplXlsx(sheets, plainSheets){
   let wbXml=await zip.file("xl/workbook.xml").async("string");
   let rels=await zip.file("xl/_rels/workbook.xml.rels").async("string");
   let ct=await zip.file("[Content_Types].xml").async("string");
+  /* sheet1's drawing (the ShipX logo) — cloned for each extra rate sheet so the logo shows there too */
+  const drawXml=await (zip.file("xl/drawings/drawing1.xml")?zip.file("xl/drawings/drawing1.xml").async("string"):null);
+  const drawRels=await (zip.file("xl/drawings/_rels/drawing1.xml.rels")?zip.file("xl/drawings/_rels/drawing1.xml.rels").async("string"):null);
   /* sheet 1 in place */
   zip.file("xl/worksheets/sheet1.xml", _tplSheetXml(base, sheets[0].meta, sheets[0].rows));
   if(sheets[0].name){ wbXml=wbXml.replace(/<sheet name="Rate Card"/,'<sheet name="'+_txesc(sheets[0].name)+'"'); }
@@ -2525,10 +2655,21 @@ async function prAmeTplXlsx(sheets, plainSheets){
     added.push({name, rid, sid});
     nextId++;
   };
-  /* extra rate sheets (e.g. No Pickup) — reuse template styling; strip drawing + hyperlinks
-     (both reference sheet1's rels, which the copy doesn't have; the logo stays on sheet 1) */
+  /* extra rate sheets (e.g. Without Pickup) — reuse template styling; hyperlinks stripped (sheet1's rels),
+     but the logo drawing is CLONED so it appears on this sheet as well */
   sheets.slice(1).forEach(s=>{
-    let xml=_tplSheetXml(base, s.meta, s.rows).replace(/<drawing r:id="[^"]*"\/>/,"").replace(/<hyperlinks>[\s\S]*?<\/hyperlinks>/,"");
+    let xml=_tplSheetXml(base, s.meta, s.rows).replace(/<hyperlinks>[\s\S]*?<\/hyperlinks>/,"");
+    if(drawXml){
+      const dn="drawing9"+nextId+".xml";
+      zip.file("xl/drawings/"+dn, drawXml);
+      if(drawRels) zip.file("xl/drawings/_rels/"+dn+".rels", drawRels);
+      ct=ct.replace("</Types>",'<Override PartName="/xl/drawings/'+dn+'" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
+      xml=xml.replace(/<drawing r:id="[^"]*"\/>/,'<drawing r:id="rId1"/>');
+      zip.file("xl/worksheets/_rels/sheet"+nextId+".xml.rels",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/'+dn+'"/></Relationships>');
+    } else {
+      xml=xml.replace(/<drawing r:id="[^"]*"\/>/,"");
+    }
     addSheet(s.name||"Rate Card 2", xml);
   });
   (plainSheets||[]).forEach(ps=>{ addSheet(ps.name, _tplPlainSheetXml(ps.aoa, ps.merges)); });
@@ -2662,7 +2803,7 @@ function prDlAmeCard(){
     let wb;
     if(pu==="both"){
       wb=prBrandedRateWB("AMD Maxipak DDP (With Pickup)", [], mk("with"), null,
-        {dec:2, cur:oc, sheetName:"Rate Card (With Pickup)", tcSheets:tcs, rateSheets:[{name:"Rate Card (No Pickup)", service:"AMD Maxipak DDP (Without Pickup)", data:mk("without")}]});
+        {dec:2, cur:oc, sheetName:"Rate Card (With Pickup)", tcSheets:tcs, rateSheets:[{name:"Rate Card (Without Pickup)", service:"AMD Maxipak DDP (Without Pickup)", data:mk("without")}]});
     } else {
       wb=prBrandedRateWB("AMD Maxipak DDP"+(pu==="without"?" (Without Pickup)":""), [], mk(pu==="without"?"without":"with"), null, {dec:2, cur:oc, tcSheets:tcs});
     }
@@ -2674,7 +2815,7 @@ function prDlAmeCard(){
     const plain=tc? tc.sheets.map(s=>({name:s.name,aoa:s.aoa,merges:s.merges})) : [];
     const sheets=(pu==="both")
       ? [{name:"Rate Card (With Pickup)", meta:{orig:P.orig,cur:oc,service:svcLbl+" — With Pickup"}, rows:mk("with")},
-         {name:"Rate Card (No Pickup)",  meta:{orig:P.orig,cur:oc,service:svcLbl+" — Without Pickup"}, rows:mk("without")}]
+         {name:"Rate Card (Without Pickup)",  meta:{orig:P.orig,cur:oc,service:svcLbl+" — Without Pickup"}, rows:mk("without")}]
       : [{name:null, meta:{orig:P.orig,cur:oc,service:svcLbl+(pu==="without"?" — Without Pickup":"")}, rows:mk(pu==="without"?"without":"with")}];
     prAmeTplXlsx(sheets, plain)
       .then(u8=>saveU8(u8,fname))
@@ -2688,7 +2829,7 @@ function prDlAmeCardPlain(mk,pu,oc,fname,tc){
   let wb;
   if(pu==="both"){
     wb=prBrandedRateWB("AME (With Pickup)", _PRC_TPL.ameGrid, mk("with"), null,
-      {dec:2, cur:oc, sheetName:"Rate Card (With Pickup)", tcSheets:tcs, rateSheets:[{name:"Rate Card (No Pickup)", service:"AME (Without Pickup)", data:mk("without")}]});
+      {dec:2, cur:oc, sheetName:"Rate Card (With Pickup)", tcSheets:tcs, rateSheets:[{name:"Rate Card (Without Pickup)", service:"AME (Without Pickup)", data:mk("without")}]});
   } else {
     wb=prBrandedRateWB("AME"+(pu==="without"?" (Without Pickup)":""), _PRC_TPL.ameGrid, mk(pu==="without"?"without":"with"), null, {dec:2, cur:oc, tcSheets:tcs});
   }
@@ -3081,7 +3222,7 @@ function svcTabsHtml(svc,tab,billLabel){
     <div class="tab ${tab==='billing'?'active':''}" onclick="setSvcTab('${svc.id}','billing')">${billLabel||'📄 Billing'}</div>
     <div class="tab ${tab==='rates'?'active':''}" onclick="setSvcTab('${svc.id}','rates')">▤ Rate card${svc.rateCards&&svc.rateCards.length>1?'s':''}${svc.settings?' &amp; settings':''}</div>
     ${svc.costCards?`<div class="tab ${tab==='cost'?'active':''}" onclick="setSvcTab('${svc.id}','cost')">💲 FedEx cost</div>`:''}
-    ${svc.howTo?`<div class="tab ${tab==='howto'?'active':''}" onclick="setSvcTab('${svc.id}','howto')">📖 How it's calculated</div>`:''}
+    ${(svc.description||svc.howTo)?`<div class="tab ${tab==='howto'?'active':''}" onclick="setSvcTab('${svc.id}','howto')">📖 How it's calculated</div>`:''}
   </div>`;
 }
 /* ============ FedEx cost cards (reconciliation with FedEx) ============ */
@@ -3390,12 +3531,11 @@ function renderService(v, svc){
   const statusTag = svc.status==="ready"
     ? `<span class="tag green">Verified</span>` : `<span class="tag amber">Beta · confirm mapping</span>`;
 
-  let h=`<div class="banner info" style="margin-top:0">${esc(svc.description)}</div>`;
-  h+=svcTabsHtml(svc,tab);
+  let h=svcTabsHtml(svc,tab);
 
   if(tab==='cost'&&svc.costCards){ h+=fedexCostTabHtml(); v.innerHTML=h; return; }
 
-  if(tab==='howto'&&svc.howTo){ h+=fedexHowToHtml(); v.innerHTML=h; return; }
+  if(tab==='howto'){ h+=`<div class="banner info" style="margin-top:0">${esc(svc.description)}</div>`; if(svc.howTo) h+=fedexHowToHtml(); v.innerHTML=h; return; }
 
   if(tab==='rates'){
   /* Rate card card(s) */
