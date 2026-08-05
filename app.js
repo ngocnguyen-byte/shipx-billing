@@ -16,11 +16,18 @@ const m2 = v => (v==null||v===""||num(v)==null)? v : {t:'n', v: round2(num(v)), 
 const m3 = v => (v==null||v===""||num(v)==null)? v : {t:'n', v: round3(num(v)), z:'0.000'};
 const sumBy = (lines,k) => round2(lines.reduce((s,o)=>s+(num(o[k])||0),0));
 const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-function monthLabel(res){ if(res&&res.monthHint) return res.monthHint; const ms=(res.lines||[]).map(o=>toISO(o.date)).filter(x=>/^\d{4}-\d{2}/.test(x)).sort(); const m=ms[0]; if(!m) return todayISO(); return MON[(+m.slice(5,7))-1]+" "+m.slice(0,4); }
+function monthLabel(res){ if(res&&res.monthHint) return res.monthHint;
+  const ms=(res.lines||[]).map(o=>toISO(o.date)).filter(x=>/^\d{4}-\d{2}/.test(x)).map(x=>x.slice(0,7)).sort();
+  if(!ms.length) return todayISO();
+  const cnt={}; ms.forEach(m=>cnt[m]=(cnt[m]||0)+1);            /* the month MOST rows belong to */
+  let m=ms[0]; Object.keys(cnt).forEach(k=>{ if(cnt[k]>cnt[m]) m=k; });
+  return MON[(+m.slice(5,7))-1]+" "+m.slice(0,4); }
 const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const norm = s => String(s??"").toLowerCase().replace(/[^a-z0-9]/g,"");
 const todayISO = () => new Date().toISOString().slice(0,10);
-function toISO(d){ if(d instanceof Date) return d.toISOString().slice(0,10);
+function toISO(d){ if(d instanceof Date){ /* SheetJS returns dates 30s short of midnight local (1 Jul -> 30 Jun 23:59:30) */
+    const t=new Date(d.getTime()+30000), p=n=>String(n).padStart(2,"0");
+    return t.getFullYear()+"-"+p(t.getMonth()+1)+"-"+p(t.getDate()); }
   if(typeof d==="number" && d>30000 && d<60000){ const dt=new Date(Date.UTC(1899,11,30)); dt.setUTCDate(dt.getUTCDate()+d); return dt.toISOString().slice(0,10);}
   const s=String(d??"").trim(); const m=s.match(/^(\d{4}-\d{2}-\d{2})/); return m?m[1]:s; }
 function periodOf(iso){ const m=String(iso).match(/^(\d{4})-(\d{2})/); if(!m) return {y:"?",q:"?",m:"?"};
@@ -106,6 +113,7 @@ const SERVICES = [
 /* ---------------- CCL ---------------- */
 {
   id:"ccl", name:"CCL — Clearance", group:"Verified", tags:["Billing","Recon"], status:"ready",
+  outName:"SGL - Clearance", noCustomerSheet:true,
   description:"Clearance = Weight × rate(consignee). Total = Clearance + Permit(consignee).",
   rate:{ keyCol:"consignee",
     cols:[{key:"consignee",label:"Consignee"},{key:"permit",label:"Permit (SGD)",num:true},
@@ -1338,6 +1346,27 @@ async function xlsxHighlightNonZero(u8, sheetIndex, sqref){
     return await zip.generateAsync({type:"array"});
   }catch(e){ console.error("highlight failed",e); return u8; }
 }
+async function xlsxStyleCells(u8, sheetIndex, refs){
+  if(typeof JSZip==="undefined" || !refs || !refs.length) return u8;
+  try{
+    const zip=await JSZip.loadAsync(u8);
+    let st=await zip.file("xl/styles.xml").async("string");
+    const gcount=(tag)=>{ const m=st.match(new RegExp("<"+tag+' count="(\\d+)"')); return m?parseInt(m[1],10):0; };
+    const fontId=gcount("fonts"), fillId=gcount("fills"), xfId=gcount("cellXfs");
+    st=st.replace(/<fonts count="\d+"/, '<fonts count="'+(fontId+1)+'"')
+         .replace("</fonts>", '<font><b/><sz val="12"/><color rgb="FFC00000"/><name val="Calibri"/><family val="2"/></font></fonts>')
+         .replace(/<fills count="\d+"/, '<fills count="'+(fillId+1)+'"')
+         .replace("</fills>", '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill></fills>')
+         .replace(/<cellXfs count="\d+"/, '<cellXfs count="'+(xfId+1)+'"')
+         .replace("</cellXfs>", '<xf numFmtId="0" fontId="'+fontId+'" fillId="'+fillId+'" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>');
+    zip.file("xl/styles.xml", st);
+    const path="xl/worksheets/sheet"+sheetIndex+".xml";
+    let sx=await zip.file(path).async("string");
+    refs.forEach(ref=>{ const re=new RegExp('(<c r="'+ref+'")'); if(re.test(sx)) sx=sx.replace(re, '$1 s="'+xfId+'"'); });
+    zip.file(path, sx);
+    return await zip.generateAsync({type:"array"});
+  }catch(e){ console.error("style failed",e); return u8; }
+}
 function saveU8(u8, filename){
   const blob=new Blob([u8],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename;
@@ -1435,12 +1464,21 @@ const _PRC_TPL={"fdxSurcharge":[[null,null,null,null],[null,"Surcharge Name","Su
    Engines verified against the CALC files' own cached values.
    ============================================================ */
 const _AME_ORIGS=[["SIN","exSIN"],["KUL","exKUL"],["BKK","exBKK"],["SGN","exSGN"]];
-const _AMD_ORIGS=[["SIN","exSIN"]];
+const _AMD_ORIGS=[["SIN","exSIN"],["KUL","exKUL"]];
 /* AMD (Maxipak DDP) reuses the whole AME engine/UI with its own dataset & store namespace.
    prNS() = which namespace the active pricing view belongs to ("ame" default). */
 function prNS(){ return (typeof route!=="undefined"&&route&&String(route.id||"").slice(0,4)==="pamd")?"amd":"ame"; }
-function _prnsK(k){ return prNS()+"_"+k; }               /* store key: ame_rows_SIN / amd_rows_SIN … */
-function prNSData(){ return prNS()==="amd" ? (window._PRC_AMD||{origins:{},combined:[],combinedU:[],currency:[],pickup:[]}) : _PRC_AME; }
+function _prnsK(k){ const ns=prNS();
+  if(ns==="amd"&&(k==="combined"||k==="combinedU"||k==="currency"||k==="pickup"))
+    return ns+"_"+k+"_"+((PRS.pamd&&PRS.pamd.orig)||"SIN");   /* AMD tables are per origin */
+  return ns+"_"+k; }
+function prNSData(){
+  if(prNS()!=="amd") return _PRC_AME;
+  const D=window._PRC_AMD||{origins:{},tables:{}};
+  const o=(PRS.pamd&&PRS.pamd.orig)||"SIN";
+  const T=(D.tables&&D.tables[o])||D.tables&&D.tables.SIN||{combined:[],combinedU:[],currency:[],pickup:[]};
+  return { origins:D.origins||{}, combined:T.combined||[], combinedU:T.combinedU||[], currency:T.currency||[], pickup:T.pickup||[] };
+}
 function prNSOrigs(){ return prNS()==="amd"?_AMD_ORIGS:_AME_ORIGS; }
 const PRICING=[{id:"pfedex",name:"FedEx Singapore"}]
   .concat([{id:"pame",name:"AME (Bpost)"}])   /* one nav item; origins are tabs inside */
@@ -1459,6 +1497,23 @@ function prAmeGo(orig){ (prNS()==="amd"?PRS.pamd:PRS.pame).orig=orig; render(); 
 function prGet(key,def){ const s=loadSavedRates("pricing:"+key); return (s==null||(s&&s.__none))?def:s; }
 function prSet(key,val){ saveRatesFor("pricing:"+key,(val==null)?{__none:1}:val); }
 function prNum(v,d){ const n=Number(v); return isFinite(n)?n:(d||0); }
+/* Transport Surcharge — an extra cost component per origin (per pc / per kg, own currency),
+   added ON TOP of the CALC cost in the card builder (does not touch the verified engine). */
+function prAmeTS(orig){ const t=prGet(_prnsK("tsurch_")+orig,null); return t&&typeof t==="object"?t:{pc:0,kg:0,cur:"SGD"}; }
+function prAmeTSSave(id){
+  const orig=PRS[id].orig;
+  const pc=Number((document.getElementById("tsPc")||{}).value||0), kg=Number((document.getElementById("tsKg")||{}).value||0);
+  const cur=(document.getElementById("tsCur")||{}).value||"SGD";
+  prSet(_prnsK("tsurch_")+orig,{pc:isFinite(pc)?pc:0,kg:isFinite(kg)?kg:0,cur:cur});
+  toastP("Transport Surcharge saved for ex"+orig+"."); render();
+}
+function prAmeFxToSGD(cur){
+  if(!cur||String(cur).toUpperCase()==="SGD") return 1;
+  const T=prAmeTables(); let r=null;
+  T.currency.forEach(row=>{ if(String(row[1]||"").trim().toUpperCase()===String(cur).trim().toUpperCase()&&r==null) r=row[5]; });
+  return (typeof r==="number"&&isFinite(r))?r:0;
+}
+
 /* Per-service attached Terms & Conditions — a whole uploaded workbook's sheets
    ({sheets:[{name,aoa,merges,cols}], file}) embedded into every rate-card export of that service. */
 function prSvcTC(svc){ const t=prGet("tc_"+svc,null); return (t&&Array.isArray(t.sheets)&&t.sheets.length)?t:null; }
@@ -1620,7 +1675,9 @@ function prAmeCards(orig,marginPct,beFilter,typFilter,routePref,routeByCode,pick
   const comp=prAmeCompute(orig);
   const noPU=(String(pickup||"").toLowerCase()==="without");   // without pickup → totals BO/BP instead of BY/BZ
   const fx=prAmeFX(outCur||"SGD");                             // SGD → output currency (divide)
-  const _cpc=c=>prNum(noPU?c.out.BO:c.out.BY)/fx, _ckg=c=>prNum(noPU?c.out.BP:c.out.BZ)/fx;
+  /* Transport Surcharge (per origin): added in SGD on top of the CALC cost, then converted like the rest */
+  const _ts=prAmeTS(orig), _tsFx=prAmeFxToSGD(_ts.cur), _tsPc=prNum(_ts.pc)*_tsFx, _tsKg=prNum(_ts.kg)*_tsFx;
+  const _cpc=c=>(prNum(noPU?c.out.BO:c.out.BY)+_tsPc)/fx, _ckg=c=>(prNum(noPU?c.out.BP:c.out.BZ)+_tsKg)/fx;
   const tplByName={}; _PRC_TPL.ameCardDefaults.forEach(t=>{ const k=String(t[1]).trim().toLowerCase(); if(tplByName[k]===undefined) tplByName[k]=t; });
   const m=1+prNum(marginPct)/100;
   const rby=routeByCode||{};
@@ -1828,18 +1885,42 @@ function prAmeBuildHtml(id){
   const shown=rows.filter(r=>!f||String(r.name).toLowerCase().indexOf(f)>=0||String(r.code).toLowerCase().indexOf(f)>=0);
   let h=`<div class="card"><div class="step">Pricing · AME · ${esc(oLbl)}</div><h3>Build a customer sell rate card</h3>
     <p class="sub">Full cost build-up per destination (linehaul + clearance + terminal + last mile + pickup, with FX &amp; volumetric) → Total Cost /pc &amp; /kg → sell = cost × (1+margin). Your CALC uses 4%.</p>
-    ${isAmd?`<div style="font-size:13px;font-weight:600;margin-bottom:4px">Service: <span class="sub">Maxipak DDP (per-piece last mile, weight-banded)</span></div>`:`<div style="font-size:13px;font-weight:600;margin-bottom:4px">Service</div>
-    <div class="tabs" style="margin-bottom:12px">
-      <button class="tab ${P.typ==='TRACKED'?'active':''}" onclick="prSetS('${id}','typ','TRACKED')">◉ Tracked</button>
-      <button class="tab ${P.typ==='UNTRACKED'?'active':''}" onclick="prSetS('${id}','typ','UNTRACKED')">○ Untracked</button>
-    </div>`}
-    <div class="filters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-      ${isAmd?``:`<label>Default route<br><select onchange="prSetS('${id}','rte',this.value)"><option value="Hub" ${rte==='Hub'?'selected':''}>Hub</option><option value="Direct" ${rte==='Direct'?'selected':''}>Direct</option></select></label>
-      <div class="fcol">Direct-allowed countries${prAmeDirectChips(id)}</div>`}
-      <label>Pick up<br><select onchange="prSetS('${id}','pickup',this.value)"><option value="with" ${pu==='with'?'selected':''}>With Pickup</option><option value="without" ${pu==='without'?'selected':''}>Without Pickup</option><option value="both" ${pu==='both'?'selected':''}>Both (2 sheets)</option></select></label>
-      <label>Output currency<br><select onchange="prSetS('${id}','outCur',this.value)">${prAmeCurList().map(c=>`<option ${oc===c?'selected':''}>${c}</option>`).join("")}</select></label>
-      <label>Margin %<br><input type="number" step="0.1" style="width:80px" value="${P.margin}" onchange="prSetS('${id}','margin',Number(this.value))"></label>
-      <label>Card version / title<br><input type="text" style="width:230px" value="${esc(P.version)}" onchange="prInp('${id}','version',this.value)"></label>
+    <div class="rcs">
+      <div class="rcs-head"><span class="ic">⚙️</span><div><h4>Rate Card Settings</h4><div class="d">Configure the details used for rate calculation and pricing.</div></div></div>
+      <div class="rcs-grid">
+        <div class="rcs-cell"><div class="rcs-title"><span class="rcs-num" style="background:#2E6DA4">1</span>Service</div>
+          <p class="rcs-desc">${isAmd?"Maxipak DDP — per-piece last mile, weight-banded.":"Tracked = Dragon Scan · Untracked = MiniPak."}</p>
+          ${isAmd?`<input type="text" disabled style="font-weight:600" value="Maxipak DDP">`
+          :`<span class="tabs" style="margin:0;padding:3px">
+            <button class="tab ${P.typ==='TRACKED'?'active':''}" onclick="prSetS('${id}','typ','TRACKED')">◉ Tracked</button>
+            <button class="tab ${P.typ==='UNTRACKED'?'active':''}" onclick="prSetS('${id}','typ','UNTRACKED')">○ Untracked</button></span>`}
+        </div>
+        ${isAmd?``:`<div class="rcs-cell"><div class="rcs-title"><span class="rcs-num" style="background:#2E6DA4">2</span>Default Route</div>
+          <p class="rcs-desc">Select the default route for rate calculation.</p>
+          <select onchange="prSetS('${id}','rte',this.value)"><option value="Hub" ${rte==='Hub'?'selected':''}>Hub</option><option value="Direct" ${rte==='Direct'?'selected':''}>Direct</option></select>
+        </div>
+        <div class="rcs-cell"><div class="rcs-title"><span class="rcs-num" style="background:#2E6DA4">3</span>Direct-Allowed Countries</div>
+          <p class="rcs-desc">Select the countries allowed for direct shipping.</p>
+          ${prAmeDirectChips(id)}
+        </div>`}
+        <div class="rcs-cell"><div class="rcs-title"><span class="rcs-num" style="background:#1e7d46">${isAmd?2:4}</span>Pick Up</div>
+          <p class="rcs-desc">Select the pickup option for shipments.</p>
+          <select onchange="prSetS('${id}','pickup',this.value)"><option value="with" ${pu==='with'?'selected':''}>With Pickup</option><option value="without" ${pu==='without'?'selected':''}>Without Pickup</option><option value="both" ${pu==='both'?'selected':''}>Both (2 sheets)</option></select>
+        </div>
+        <div class="rcs-cell"><div class="rcs-title"><span class="rcs-num" style="background:#7c3aed">${isAmd?3:5}</span>Output Currency</div>
+          <p class="rcs-desc">Select the currency for rate output.</p>
+          <select onchange="prSetS('${id}','outCur',this.value)">${prAmeCurList().map(c=>`<option ${oc===c?'selected':''}>${c}</option>`).join("")}</select>
+        </div>
+        <div class="rcs-cell"><div class="rcs-title"><span class="rcs-num" style="background:#f59e0b">${isAmd?4:6}</span>Margin %</div>
+          <p class="rcs-desc">Enter the margin percentage to apply.</p>
+          <input type="number" step="0.1" value="${P.margin}" onchange="prSetS('${id}','margin',Number(this.value))">
+        </div>
+        <div class="rcs-cell"><div class="rcs-title"><span class="rcs-num" style="background:#2E6DA4">${isAmd?5:7}</span>Card Version / Title</div>
+          <p class="rcs-desc">Enter the rate card version or title.</p>
+          <input type="text" value="${esc(P.version)}" onchange="prInp('${id}','version',this.value)">
+        </div>
+      </div>
+      <div class="rcs-note"><b>ⓘ</b><span><b>Note</b> — these settings are applied to the rate card and used for pricing calculation.</span></div>
     </div>
     <p class="sub" style="margin-top:2px">${isAmd?`All AMD lanes route via <b>Hub</b>; rates are weight-banded per destination (Max Weight column).`:``}${isAmd?``:`Default route <b>${esc(rte)}</b>. Direct is allowed only for <b>${esc(prAmeDirectList().join(", "))}</b> (edit above). ${dualCnt?`${dualCnt} destination(s) here can go Direct <b>or</b> Hub — set each in the <b>Route</b> column below${ovCnt?` (<b>${ovCnt}</b> set individually — <a href="#" onclick="prAmeResetRoutes('${id}');return false">reset all to default</a>)`:``}.`:`No destination here has an allowed Direct+Hub alternative at this type; each keeps its only route.`}`}</p>
     ${(pu==="with"||pu==="both")?(function(){
@@ -2212,6 +2293,17 @@ function prAmeCostHtml(id){
     h+=`<td>${ed?`<input type="text" style="width:60px" value="${TV.cur!==undefined?esc(String(TV.cur)):esc(String(r[7]||""))}" ${stg("cur")}>`:esc(String(r[7]||""))}</td>${rowBtns("pu",i,ed)}</tr>`; });
   if(TA==="pu"){ h+=`<tr style="background:#f2f8f2"><td><input type="text" style="width:56px" placeholder="Origin" ${astg("orig")}></td>${["pc","kg","pt","wpp","vol"].map(k=>`<td class="num"><input type="number" step="0.01" style="width:80px" ${astg(k)}></td>`).join("")}<td><input type="text" style="width:60px" placeholder="Cur" ${astg("cur")}></td><td style="white-space:nowrap"><button class="primary sm" onclick="prAmeTblAddSave('${id}')">Save</button> <button class="subtle sm" onclick="PRS['${id}']._tblAdd=null;PRS['${id}']._tblAddVals=null;render()">Cancel</button></td></tr>`; }
   h+=`</tbody></table></div></div>`;
+  const TS=prAmeTS(orig);
+  h+=`<div class="card"><h3>Transport Surcharge (ex${esc(orig)})</h3>
+    <p class="sub">An extra surcharge added on top of the full cost build-up for every ${esc(String(orig))} destination — per piece and per kg, in the currency you choose. Set both to 0 to disable. Applied before margin; shown in the Build preview costs.</p>
+    <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+      <label class="fcol" style="display:inline-flex;flex-direction:column;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--ink2)">Per piece<input type="number" step="0.01" id="tsPc" style="width:100px" value="${prNum(TS.pc)}"></label>
+      <label class="fcol" style="display:inline-flex;flex-direction:column;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--ink2)">Per kg<input type="number" step="0.01" id="tsKg" style="width:100px" value="${prNum(TS.kg)}"></label>
+      <label class="fcol" style="display:inline-flex;flex-direction:column;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--ink2)">Currency<select id="tsCur">${prAmeCurList().map(c=>`<option ${String(TS.cur||"SGD")===c?"selected":""}>${c}</option>`).join("")}</select></label>
+      <button class="primary sm" onclick="prAmeTSSave('${id}')">Save</button>
+      <button class="subtle sm" onclick="prSet(_prnsK('tsurch_')+'${orig}',null);render()">Reset (0)</button>
+      ${(prNum(TS.pc)||prNum(TS.kg))?`<span class="sub">Current: <b style="color:var(--pink)">${prNum(TS.pc)} /pc · ${prNum(TS.kg)} /kg ${esc(String(TS.cur||"SGD"))}</b></span>`:`<span class="sub">Currently: none</span>`}
+    </div></div>`;
   const lmf=String(P.lmf||"").toLowerCase();
   const lmRows=[]; T.combined.forEach((r,i)=>{ if(!(r[1]&&String(r[1]).length<=3)) return;
     const hay=(String(r[1])+" "+String(r[9]||"")+" "+String(r[4]||"")+" "+String(r[5]||"")).toLowerCase();
@@ -4175,13 +4267,16 @@ function monthEndPack(month){
   const ml=/^\d{4}-\d{2}/.test(month)?MON[(+month.slice(5,7))-1]+" "+month.slice(0,4):month;
   XLSX.writeFile(wb,"ShipX_Month-End_"+ml+".xlsx");
 }
-function downloadResult(id){
+async function downloadResult(id){
   const svc=SVC[id], st=state[id], res=st.result; if(!res||!res.lines.length){ alert("Nothing to download yet."); return; }
   if(svc.buildWorkbook){ const {wb,name}=svc.buildWorkbook(res,st); XLSX.writeFile(wb, `${name}_${monthLabel(res)}.xlsx`); return; }
   const totals=summarize(res);
   const _ac=totals.hasCost&&!res.columns.some(c=>c.k==="cost");
   const header=res.columns.map(c=>c.l).concat(totals.hasCost?(_ac?["Cost (SGD)","GP (SGD)","GP %"]:["GP (SGD)","GP %"]):[]);
-  const aoa=[["Total billing (SGD):",m2(totals.amount)],[],header];
+  const _ti=Math.max(0, res.columns.findIndex(c=>c.tot)); const _tref=XLSX.utils.encode_col(_ti)+"1";
+  const _r0=header.map(()=>null); _r0[_ti]="SGD "+round2(totals.amount).toFixed(2);
+  if(_ti!==0) _r0[0]="Total billing (SGD):";
+  const aoa=[_r0,[],header];
   res.lines.forEach(o=>{
     const row=res.columns.map(c=>{ const v=o[c.k]; if(c.money&&typeof v==="number") return m2(v); return c.num&&typeof v==="number"?round2(v):v; });
     if(totals.hasCost){ if(_ac) row.push(o.cost!=null?m2(o.cost):null); const _g=o.cost!=null?round2(o.amount-o.cost):null; row.push(_g!=null?m2(_g):null, (_g!=null&&o.amount)?{t:"n",v:round2(_g/o.amount*100)/100,z:"0.0%"}:null); }
@@ -4192,12 +4287,16 @@ function downloadResult(id){
     res.review.forEach(r=>aoa.push(Object.keys(r).filter(k=>k!=="reason").map(k=>r[k]).concat(r.reason))); }
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Billing");
-  // customer summary sheet
-  const by=breakdownByCustomer(res);
-  const s2=[["Customer","Shipments","Billing (SGD)"].concat(totals.hasCost?["GP","GP %"]:[])];
-  by.forEach(b=>s2.push([b.customer,b.shipments,m2(b.amount)].concat(totals.hasCost?[m2(b.gp), b.amount?round2(b.gp/b.amount*100):0]:[])));
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s2),"By customer");
-  XLSX.writeFile(wb, `${svc.name.replace(/[^\w]+/g,"_")}_${monthLabel(res)}.xlsx`);
+  if(!svc.noCustomerSheet){
+    const by=breakdownByCustomer(res);
+    const s2=[["Customer","Shipments","Billing (SGD)"].concat(totals.hasCost?["GP","GP %"]:[])];
+    by.forEach(b=>s2.push([b.customer,b.shipments,m2(b.amount)].concat(totals.hasCost?[m2(b.gp), b.amount?round2(b.gp/b.amount*100):0]:[])));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s2),"By customer");
+  }
+  const fname = svc.outName ? `${svc.outName} - ${monthLabel(res)}.xlsx`
+                            : `${svc.name.replace(/[^\w]+/g,"_")}_${monthLabel(res)}.xlsx`;
+  const u8=XLSX.write(wb,{type:"array",bookType:"xlsx"});
+  saveU8(await xlsxStyleCells(u8,1,[_tref]), fname);
 }
 
 /* ---------- Records ---------- */
