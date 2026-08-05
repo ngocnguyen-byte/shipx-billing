@@ -421,6 +421,7 @@ const SERVICES = [
 {
   id:"ame", name:"AME (Postal)", group:"Rate-card", tags:["Billing","Recon","GP","Multi-cust"], status:"ready", keepAllColumns:true,
   description:"Postal billing per customer account. Charge = PC rate + KG rate × weight(kg); Total = Charge + Transport surcharge (weight × S$1). Cost (terminal + linehaul + last-mile + pickup) and GP are computed too — both verified to the cent vs your CALC. Each account has its own rate card below (editable/uploadable).",
+  addCustomerCards:true,
   rateCards: AME_ACCOUNTS.map(a=>({id:a, label:"Rate card · "+a, keyCol:"cc", countryKey:"cc", cols:AME_CARD_COLS,
     rows:(_AME_CARDS[a]||[]).map(r=>({cc:r[0],pc:r[1],kg:r[2]}))})),
   input:{ cols:[
@@ -437,7 +438,7 @@ const SERVICES = [
     {key:"sender",label:"Sender Country Code",aliases:["sendercountrycode"],required:false},
     {key:"value",label:"Total shipment value",aliases:["totalshipmentvalue"],required:false} ]},
   calc(rows,rate,st){
-    const cards={}; AME_ACCOUNTS.forEach(a=>{ const m={}; ((st.rateCards[a]||{}).rows||[]).forEach(r=>{ if(r.cc) m[norm(r.cc)]={pc:num(r.pc)||0,kg:num(r.kg)||0}; }); cards[a]=m; });
+    const cards={}; Object.keys(st.rateCards||{}).forEach(a=>{ const m={}; ((st.rateCards[a]||{}).rows||[]).forEach(r=>{ if(r.cc) m[norm(r.cc)]={pc:num(r.pc)||0,kg:num(r.kg)||0}; }); cards[a]=m; });
     const lines=[],review=[];
     rows.forEach(r=>{
       const acct=String(r.acct||"").trim();
@@ -448,7 +449,7 @@ const SERVICES = [
       const charge=round2(rc.pc + rc.kg*wkg), surch=wkg, total=charge+surch; // surcharge & total UNROUNDED — matches CALC (AK=(F/1000)*1, AL=AK+Z)
       const cc=_AME_COST[String(r.dest||"").trim().toUpperCase()];
       let cost=null;
-      if(cc){ const pu=AME_PICKUP_ACCTS.indexOf(acct)>=0;
+      if(cc){ const pu=(typeof ameHasPickup==="function")?ameHasPickup(acct):(AME_PICKUP_ACCTS.indexOf(acct)>=0);
         cost=round2(cc[0]+cc[1]*wkg + cc[2]*wkg + cc[3]+cc[4]*wkg + (pu?(cc[5]+cc[6]*wkg):0)); }
       lines.push({track:r.track,order:r.order,customer:acct,dest:r.dest,weightG:wg,weightKg:round2(wkg),
         pc:rc.pc,kg:rc.kg,charge,surcharge:surch,amount:total,cost,
@@ -1460,6 +1461,39 @@ function getRate(svc){
   const saved=loadSavedRates(svc.id);
   if(validSavedRows(saved,svc.rate.keyCol)) return {rows:saved.map(r=>({...r}))};
   return {rows:svc.rate.rows.map(r=>({...r}))};
+}
+/* ---- AME: customer accounts the user added on the web (rate card per account) ---- */
+function ameExtraAccts(){ const ex=loadSavedRates("ame:_accounts"); return Array.isArray(ex)?ex.filter(r=>r&&r.account):[]; }
+function ameAccounts(){ const extra=ameExtraAccts().map(r=>String(r.account).trim().toUpperCase());
+  return AME_ACCOUNTS.concat(extra.filter(a=>AME_ACCOUNTS.indexOf(a)<0)); }
+function ameIsExtra(a){ return AME_ACCOUNTS.indexOf(a)<0; }
+function ameHasPickup(a){ if(AME_PICKUP_ACCTS.indexOf(a)>=0) return true;
+  const e=ameExtraAccts().find(r=>String(r.account).trim().toUpperCase()===a); return !!(e&&e.pickup); }
+function ameSyncCards(){
+  const svc=SVC["ame"]; if(!svc||!svc.rateCards) return;
+  const want=ameAccounts(), have={}; svc.rateCards.forEach(c=>have[c.id]=1);
+  want.forEach(a=>{ if(!have[a]) svc.rateCards.push({id:a, label:"Rate card · "+a, keyCol:"cc", countryKey:"cc", cols:AME_CARD_COLS,
+    rows:(_AME_CARDS[a]||[]).map(r=>({cc:r[0],pc:r[1],kg:r[2]}))}); });
+  svc.rateCards=svc.rateCards.filter(c=>want.indexOf(c.id)>=0);
+  if(state["ame"]) state["ame"].rateCards=getRateCards(svc);
+}
+function ameAddCustomer(){
+  const g=i=>{ const e=document.getElementById(i); return e?e.value:""; };
+  const a=String(g("ameNewAcct")||"").trim().toUpperCase();
+  if(!a){ alert("Type the customer account code first — for example SINABC_001."); return; }
+  if(ameAccounts().indexOf(a)>=0){ alert(a+" already has a rate card."); return; }
+  const pk=document.getElementById("ameNewPickup"); const pickup=!!(pk&&pk.checked);
+  const ex=ameExtraAccts().slice(); ex.push({account:a,pickup:pickup?1:0});
+  saveRatesFor("ame:_accounts", ex);
+  ameSyncCards();
+  svcTab["ame"]="rates"; render();
+  setTimeout(()=>{ if(confirm("Rate card created for "+a+".\n\nUpload its rate file now? (.xlsx/.csv with Country Code, PC Rate, KG Rate)")) rateFileInputN("ame",a); },60);
+}
+function ameRemoveCustomer(a){
+  if(!confirm("Remove the rate card for "+a+"?\n\nShipments for this account will be flagged for review again.")) return;
+  saveRatesFor("ame:_accounts", ameExtraAccts().filter(r=>String(r.account).trim().toUpperCase()!==a));
+  if(state["ame"]&&state["ame"].rateCards) delete state["ame"].rateCards[a];
+  ameSyncCards(); render();
 }
 function getRateCards(svc){
   if(!svc.rateCards) return null;
@@ -3299,6 +3333,7 @@ function rateUpdatedInfo(svcId,cardId,cardLabel,svcName){
   const e=log.find(x=>x.service===svcId && (x.card===cardLabel || x.card===svcName || (!cardId && !x.card)));
   return e?{at:e.at,by:e.by}:null; }
 function renderRateHub(v){
+  ameSyncCards();
   let h=`<div class="card"><div class="step">Rate cards</div><h3>All rate cards</h3>
     <p class="sub">Every rate card used for billing, across all services. Download to view/share in Excel, or open a service to edit — edits are saved${(typeof SB!=="undefined"&&SB)?" and shared with the team live":""}.</p>
     <div class="tbl-scroll" style="max-height:none"><table><thead><tr><th>Service</th><th>Rate card</th><th class="num">Rows</th><th>Last updated</th><th></th></tr></thead><tbody>`;
@@ -3636,6 +3671,7 @@ function fedexHowToHtml(){
 function renderService(v, svc){
   if(svc.docketRecon){ renderDocketService(v,svc); return; }
   setTitle(svc.name, "Service");
+  if(svc.addCustomerCards) ameSyncCards();          /* customer cards added on the web */
   const st=ensureServiceState(svc);
   const tab=svcTab[svc.id]||'billing';
 
@@ -3650,12 +3686,24 @@ function renderService(v, svc){
 
   if(tab==='rates'){
   /* Rate card card(s) */
+  if(svc.addCustomerCards){
+    ameSyncCards();
+    h+=`<div class="card" style="border:1px solid var(--accent2)"><div class="flexhead">
+        <div><div class="step">New customer</div><h3>➕ Add a customer rate card</h3>
+        <p class="sub">Type the customer account code exactly as it appears in your input file (the <b>Customer Account</b> column), then upload that customer's rate file.
+        <br><span class="muted">The rate file needs one header row with: <b>Country Code, PC Rate (SGD), KG Rate (SGD)</b> — click ⭳ Download on any card below to get the exact template.</span></p></div></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input id="ameNewAcct" placeholder="e.g. SINABC_001" style="width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+          <label style="font-size:13px;cursor:pointer"><input type="checkbox" id="ameNewPickup"> this account is charged pickup cost</label>
+          <button class="sm" onclick="ameAddCustomer()">➕ Add customer &amp; upload rate file</button>
+        </div></div>`;
+  }
   if(svc.rateCards){
     svc.rateCards.forEach(c=>{
       h+=`<div class="card"><div class="flexhead">
           <div><div class="step">Rate card</div><h3>${esc(c.label)} ${statusTag}</h3>
           <p class="sub">${c.rows.length} rows. Click ✎ Edit to change values, then Save. Delete asks to confirm.<br><span class="muted">To upload: an .xlsx/.csv with a single header row containing columns: <b>${c.cols.length>8? c.cols.slice(0,5).map(x=>esc(x.label)).join(", ")+" … "+esc(c.cols[c.cols.length-1].label)+"</b> ("+c.cols.length+" columns — ⭳ Download this card to get the exact template)" : c.cols.map(x=>esc(x.label)).join(", ")+"</b>."}</span></p></div>
-          <div style="display:flex;gap:8px">${rateCardButtons(svc.id,c.id)}</div></div>
+          <div style="display:flex;gap:8px">${rateCardButtons(svc.id,c.id)}${(svc.addCustomerCards&&ameIsExtra(c.id))?`<button class="subtle sm" style="color:var(--danger)" onclick="ameRemoveCustomer('${c.id}')">Remove customer</button>`:''}</div></div>
           <div class="tbl-scroll"><table id="rateTbl_${svc.id}_${c.id}"></table></div>
         </div>`;
     });
