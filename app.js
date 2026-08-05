@@ -451,7 +451,8 @@ const SERVICES = [
       let cost=null;
       if(cc){ const pu=(typeof ameHasPickup==="function")?ameHasPickup(acct):(AME_PICKUP_ACCTS.indexOf(acct)>=0);
         cost=round2(cc[0]+cc[1]*wkg + cc[2]*wkg + cc[3]+cc[4]*wkg + (pu?(cc[5]+cc[6]*wkg):0)); }
-      lines.push({track:r.track,order:r.order,customer:acct,dest:r.dest,weightG:wg,weightKg:round2(wkg),
+      const _cnm=(typeof ameName==="function")?ameName(acct):"";
+      lines.push({track:r.track,order:r.order,customer:acct,custName:_cnm||acct,dest:r.dest,weightG:wg,weightKg:round2(wkg),
         pc:rc.pc,kg:rc.kg,charge,surcharge:surch,amount:total,cost,
         _m:{sender:r.sender,dest:r.dest,acct,track:r.track,order:r.order,amilo:r.amilo,container:r.container,incoterm:r.incoterm,dsp:r.dsp,content:r.content,value:r.value,weight:wg,raw:r._raw}});
     });
@@ -471,9 +472,11 @@ const SERVICES = [
     let monthHint=null; const _f0=String((st&&st.files&&st.files[0])||""); const _mm=_f0.match(/(\d{2})(\d{4})/);
     if(_mm&&+_mm[1]>=1&&+_mm[1]<=12) monthHint=MON[(+_mm[1])-1]+" "+_mm[2];
     return {lines,review,currency:"$",recon,monthHint,
-      columns:[{k:"track",l:"Tracking"},{k:"customer",l:"Account"},{k:"dest",l:"Dest"},
+      columns:[{k:"track",l:"Tracking"},{k:"customer",l:"Account"}]
+        .concat(lines.some(o=>o.custName&&o.custName!==o.customer)?[{k:"custName",l:"Customer"}]:[])   /* only when names are known */
+        .concat([{k:"dest",l:"Dest"},
         {k:"weightG",l:"Wt (g)",num:true},{k:"charge",l:"Charge",num:true,money:true},
-        {k:"surcharge",l:"Surch",num:true,money:true},{k:"amount",l:"Total (SGD)",num:true,money:true,tot:true}]};
+        {k:"surcharge",l:"Surch",num:true,money:true},{k:"amount",l:"Total (SGD)",num:true,money:true,tot:true}])};
   },
   buildWorkbook(res,st){ // Output 1 - per-customer manifest (values), one sheet per account
     const wb=XLSX.utils.book_new(), by={};
@@ -1467,30 +1470,39 @@ function ameExtraAccts(){ const ex=loadSavedRates("ame:_accounts"); return Array
 function ameAccounts(){ const extra=ameExtraAccts().map(r=>String(r.account).trim().toUpperCase());
   return AME_ACCOUNTS.concat(extra.filter(a=>AME_ACCOUNTS.indexOf(a)<0)); }
 function ameIsExtra(a){ return AME_ACCOUNTS.indexOf(a)<0; }
+function ameName(a){ const e=ameExtraAccts().find(r=>String(r.account).trim().toUpperCase()===a); return (e&&e.name)?String(e.name):""; }
+function ameCardLabel(a){ const n=ameName(a); return "Rate card · "+a+(n?(" · "+n):""); }
 function ameHasPickup(a){ if(AME_PICKUP_ACCTS.indexOf(a)>=0) return true;
   const e=ameExtraAccts().find(r=>String(r.account).trim().toUpperCase()===a); return !!(e&&e.pickup); }
 function ameSyncCards(){
   const svc=SVC["ame"]; if(!svc||!svc.rateCards) return;
   const want=ameAccounts(), have={}; svc.rateCards.forEach(c=>have[c.id]=1);
-  want.forEach(a=>{ if(!have[a]) svc.rateCards.push({id:a, label:"Rate card · "+a, keyCol:"cc", countryKey:"cc", cols:AME_CARD_COLS,
+  want.forEach(a=>{ if(!have[a]) svc.rateCards.push({id:a, label:ameCardLabel(a), keyCol:"cc", countryKey:"cc", cols:AME_CARD_COLS,
     rows:(_AME_CARDS[a]||[]).map(r=>({cc:r[0],pc:r[1],kg:r[2]}))}); });
   svc.rateCards=svc.rateCards.filter(c=>want.indexOf(c.id)>=0);
+  svc.rateCards.forEach(c=>{ if(ameIsExtra(c.id)) c.label=ameCardLabel(c.id); });   /* keep the name shown on the card */
   if(state["ame"]) state["ame"].rateCards=getRateCards(svc);
 }
 function ameAddCustomer(){
   const g=i=>{ const e=document.getElementById(i); return e?e.value:""; };
   const a=String(g("ameNewAcct")||"").trim().toUpperCase();
+  const nm=String(g("ameNewName")||"").trim();
   if(!a){ alert("Type the customer account code first — for example SINABC_001."); return; }
-  if(ameAccounts().indexOf(a)>=0){ alert(a+" already has a rate card."); return; }
+  if(!nm){ alert("Type the customer name too — it is shown on the rate card and in the billing output."); return; }
+  if(AME_ACCOUNTS.indexOf(a)>=0){ alert(a+" is one of the built-in accounts — its rate card is already below."); return; }
   const pk=document.getElementById("ameNewPickup"); const pickup=!!(pk&&pk.checked);
-  const ex=ameExtraAccts().slice(); ex.push({account:a,pickup:pickup?1:0});
+  const ex=ameExtraAccts().slice();
+  const at=ex.findIndex(r=>String(r.account).trim().toUpperCase()===a);
+  if(at>=0){ if(!confirm(a+" already has a rate card ("+(ex[at].name||"no name")+").\n\nUpdate it to “"+nm+"”"+(pickup?" with pickup cost":" without pickup cost")+"?")) return;
+    ex[at]={account:a,name:nm,pickup:pickup?1:0}; }
+  else ex.push({account:a,name:nm,pickup:pickup?1:0});
   saveRatesFor("ame:_accounts", ex);
   ameSyncCards();
   svcTab["ame"]="rates"; render();
-  setTimeout(()=>{ if(confirm("Rate card created for "+a+".\n\nUpload its rate file now? (.xlsx/.csv with Country Code, PC Rate, KG Rate)")) rateFileInputN("ame",a); },60);
+  setTimeout(()=>{ if(confirm("Rate card saved for "+nm+" ("+a+").\n\nUpload its rate file now? (.xlsx/.csv with Country Code, PC Rate, KG Rate)")) rateFileInputN("ame",a); },60);
 }
 function ameRemoveCustomer(a){
-  if(!confirm("Remove the rate card for "+a+"?\n\nShipments for this account will be flagged for review again.")) return;
+  if(!confirm("Remove the rate card for "+(ameName(a)?ameName(a)+" ("+a+")":a)+"?\n\nShipments for this account will be flagged for review again.")) return;
   saveRatesFor("ame:_accounts", ameExtraAccts().filter(r=>String(r.account).trim().toUpperCase()!==a));
   if(state["ame"]&&state["ame"].rateCards) delete state["ame"].rateCards[a];
   ameSyncCards(); render();
@@ -3690,10 +3702,11 @@ function renderService(v, svc){
     ameSyncCards();
     h+=`<div class="card" style="border:1px solid var(--accent2)"><div class="flexhead">
         <div><div class="step">New customer</div><h3>➕ Add a customer rate card</h3>
-        <p class="sub">Type the customer account code exactly as it appears in your input file (the <b>Customer Account</b> column), then upload that customer's rate file.
+        <p class="sub">Type the customer account code exactly as it appears in your input file (the <b>Customer Account</b> column) plus the customer name, then upload that customer's rate file.
         <br><span class="muted">The rate file needs one header row with: <b>Country Code, PC Rate (SGD), KG Rate (SGD)</b> — click ⭳ Download on any card below to get the exact template.</span></p></div></div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <input id="ameNewAcct" placeholder="e.g. SINABC_001" style="width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+          <input id="ameNewAcct" placeholder="Account code — e.g. SINABC_001" style="width:230px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+          <input id="ameNewName" placeholder="Customer name — e.g. Urban Dosing Grounds" style="width:270px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
           <label style="font-size:13px;cursor:pointer"><input type="checkbox" id="ameNewPickup"> this account is charged pickup cost</label>
           <button class="sm" onclick="ameAddCustomer()">➕ Add customer &amp; upload rate file</button>
         </div></div>`;
