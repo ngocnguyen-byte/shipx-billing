@@ -305,7 +305,7 @@ const SERVICES = [
 },
 /* ---------------- Linehaul (bypass bag) ---------------- */
 {
-  id:"linehaul", name:"Linehaul (bypass bag)", group:"Rate-card", tags:["Recon","Billing","GP"], status:"ready",
+  id:"linehaul", name:"Linehaul (bypass bag)", group:"Rate-card", tags:["Recon","Billing","GP"], status:"ready", lhResolve:true,
   description:"Bpost bypass-bag linehaul. Billing = sell rate (by arriving port) × Weight-to-Charge; Cost from input; GP = Price − Cost. Reconciliation checks the input file — (1) ET/LX airlines must be charged from 1kg, (2) Cost = Weight-to-Charge × Rate, (3) input Rate p/kg = the card Cost — and flags any CN35 to check. Two outputs: Reconciliation (CALC, with formulas) + Billing to Bpost. Customer = Bpost.",
   rate:{ keyCol:"code", cols:LH_CARD_COLS,
     rows:_LH_CARD.map(r=>({origin:r[0],route:r[1],sp:r[2],destname:r[3],code:r[4],port:r[5],sell:r[6],area:r[7],cost:r[8]})) },
@@ -321,12 +321,20 @@ const SERVICES = [
     {key:"ratein",label:"Rate p/kg",aliases:["ratepkg","rate"],required:false},
     {key:"costin",label:"Cost",aliases:["cost"],required:false},
     {key:"remarks",label:"Remarks",aliases:["remarks"],required:false} ]},
-  calc(rows,rate){
+  calc(rows,rate,st){
     const byPort={}; rate.rows.forEach(r=>{ if(r.port && !byPort[norm(r.port)]) byPort[norm(r.port)]={sell:num(r.sell),cost:num(r.cost)}; });
-    const lines=[],review=[],checkFails=[];
-    rows.forEach(r=>{
-      const pr=byPort[norm(r.port)];
-      if(!pr){ review.push({cn35:r.cn35,port:r.port,reason:"No rate for port "+(r.port||"(blank)")}); return; }
+    const fixes=(st&&st.lhFixes)||{};
+    const lines=[],review=[],checkFails=[]; let ignored=0;
+    rows.forEach((r,ri)=>{
+      const _key=String(r.cn35||"").trim()||("#"+(ri+1));
+      const fx=fixes[_key]||{};
+      if(fx.ignore){ ignored++; return; }                       /* not a shipment (e.g. the totals row at the bottom) */
+      let pr=byPort[norm(r.port)], portUsed=r.port, answered=null;
+      if(!pr && fx.port && byPort[norm(fx.port)]){ pr=byPort[norm(fx.port)]; portUsed=fx.port; answered="Port set to "+fx.port+" in Review & resolve"; }
+      else if(!pr && num(fx.sell)!=null){ pr={sell:num(fx.sell), cost:(num(fx.cost)!=null?num(fx.cost):null)}; portUsed=r.port||"(manual rate)"; answered="Rate "+num(fx.sell)+"/kg typed in Review & resolve"; }
+      if(!pr){ review.push({_key,date:toISO(r.date),cn35:r.cn35,bag:r.bag,actual:num(r.actual),charge:num(r.charge),dest:r.dest,
+        port:r.port,airline:r.airline,ratein:num(r.ratein),costin:num(r.costin),remarks:r.remarks,
+        reason:"No rate for port "+(r.port||"(blank)")}); return; }
       const chg=num(r.charge)||0, ratePkg=num(r.ratein), inCost=num(r.costin);
       const airline=String(r.airline||"").toUpperCase(), checks=[];
       const isETLX=(airline.indexOf("ET")===0||airline.indexOf("LX")===0);
@@ -334,8 +342,9 @@ const SERVICES = [
       if(isETLX && chg<1) checks.push("ET/LX min 1kg — input "+chg+"kg, billed at 1kg");
       if(ratePkg!=null && inCost!=null && Math.abs(round2(chg*ratePkg)-round2(inCost))>0.01) checks.push("Cost ≠ Wt×Rate ("+round2(chg*ratePkg)+" vs "+round2(inCost)+")");
       if(ratePkg!=null && pr.cost!=null && Math.abs(round2(ratePkg)-round2(pr.cost))>0.01) checks.push("Rate "+ratePkg+" ≠ card cost "+pr.cost);
+      if(answered) checks.push(answered);
       const sell=pr.sell, price=round2(sell*billW), cost=inCost!=null?round2(inCost):round2((pr.cost||0)*billW);
-      lines.push({date:toISO(r.date),cn35:r.cn35,actual:num(r.actual),charge:billW,dest:r.dest,port:r.port,airline:r.airline,ratePkg,inCost,remarks:r.remarks,sell,price,amount:price,cost,check:checks.length?checks.join("; "):"OK"});
+      lines.push({date:toISO(r.date),cn35:r.cn35,actual:num(r.actual),charge:billW,dest:r.dest,port:portUsed,airline:r.airline,ratePkg,inCost,remarks:r.remarks,sell,price,amount:price,cost,check:checks.length?checks.join("; "):"OK"});
       if(checks.length) checkFails.push({cn35:r.cn35,reason:checks.join("; ")});
     });
     const rev=round2(lines.reduce((s,o)=>s+o.amount,0)), cst=round2(lines.reduce((s,o)=>s+(o.cost||0),0)), gp=round2(rev-cst);
@@ -345,7 +354,7 @@ const SERVICES = [
         {label:"GP %",value:(rev?round2(gp/rev*100):0)},{label:"CN35 to check",value:checkFails.length}],
       verdict: checkFails.length? ("⚠ "+checkFails.length+" CN35 to check: "+checkFails.slice(0,4).map(x=>x.cn35).join(", ")+(checkFails.length>4?" …":"")+" — see the 'Check' column in the reconciliation download.")
         : "✓ All rows pass the 3 checks (ET/LX from 1kg · Cost = Wt×Rate · input Rate = card cost)." };
-    return {lines,review,currency:"$",recon,billCustomer:"Bpost",
+    return {lines,review,currency:"$",recon,billCustomer:"Bpost",lhIgnored:ignored,
       columns:[{k:"date",l:"Date"},{k:"cn35",l:"CN35"},{k:"charge",l:"Wt to Chg",num:true},{k:"dest",l:"Dest"},{k:"port",l:"Port"},{k:"airline",l:"Airline"},
         {k:"sell",l:"Rate/kg",num:true,money:true},{k:"cost",l:"Cost",num:true,money:true},{k:"amount",l:"Price (SGD)",num:true,money:true,tot:true},{k:"check",l:"Check"}]};
   },
@@ -356,7 +365,7 @@ const SERVICES = [
     res.lines.forEach((o,i)=>{ const R=i+3;
       aoa.push([o.date,o.cn35,o.actual,o.charge,o.dest,o.port,o.airline,o.remarks,o.sell,fcell("I"+R+"*D"+R,o.price)]); });
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Billing");
-    return {wb,name:"Linehaul Billing_Bpost"};
+    return {wb,name:"Linehaul Billing_Bpost",styleRefs:[{sheet:1,refs:["J1"]}]};
   },
   buildRecon(res,st){
     const wb=XLSX.utils.book_new();
@@ -1357,17 +1366,21 @@ async function xlsxStyleCells(u8, targets){   /* targets: [{sheet:1, refs:["H1"]
     let st=await zip.file("xl/styles.xml").async("string");
     const gcount=(tag)=>{ const m=st.match(new RegExp("<"+tag+' count="(\\d+)"')); return m?parseInt(m[1],10):0; };
     const fontId=gcount("fonts"), fillId=gcount("fills"), xfId=gcount("cellXfs");
+    const NFID=200, NF='<numFmt numFmtId="'+NFID+'" formatCode="&quot;SGD &quot;#,##0.00"/>';
+    if(/<numFmts count="\d+"/.test(st)) st=st.replace(/<numFmts count="(\d+)"/, (m,c)=>'<numFmts count="'+(parseInt(c,10)+1)+'"').replace("</numFmts>", NF+"</numFmts>");
+    else st=st.replace(/(<styleSheet[^>]*>)/, '$1<numFmts count="1">'+NF+'</numFmts>');
     st=st.replace(/<fonts count="\d+"/, '<fonts count="'+(fontId+1)+'"')
          .replace("</fonts>", '<font><b/><sz val="12"/><color rgb="FFC00000"/><name val="Calibri"/><family val="2"/></font></fonts>')
          .replace(/<fills count="\d+"/, '<fills count="'+(fillId+1)+'"')
          .replace("</fills>", '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill></fills>')
          .replace(/<cellXfs count="\d+"/, '<cellXfs count="'+(xfId+1)+'"')
-         .replace("</cellXfs>", '<xf numFmtId="0" fontId="'+fontId+'" fillId="'+fillId+'" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>');
+         .replace("</cellXfs>", '<xf numFmtId="'+NFID+'" fontId="'+fontId+'" fillId="'+fillId+'" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/></cellXfs>');
     zip.file("xl/styles.xml", st);
     for(const t of targets){
       const path="xl/worksheets/sheet"+t.sheet+".xml", f=zip.file(path); if(!f) continue;
       let sx=await f.async("string");
-      (t.refs||[]).forEach(ref=>{ const re=new RegExp('(<c r="'+ref+'")'); if(re.test(sx)) sx=sx.replace(re, '$1 s="'+xfId+'"'); });
+      (t.refs||[]).forEach(ref=>{ const re=new RegExp('<c r="'+ref+'"[^>]*');   /* replace an existing s=, never add a second one */
+        sx=sx.replace(re, m=> / s="\d+"/.test(m) ? m.replace(/ s="\d+"/,' s="'+xfId+'"') : m+' s="'+xfId+'"'); });
       zip.file(path, sx);
     }
     return await zip.generateAsync({type:"array"});
@@ -4029,6 +4042,48 @@ function setFedexFix(id,awb,key,val){ const st=state[id]; st.fedexFixes=st.fedex
   if(val===""||val==null){ delete f[key]; if(!Object.keys(f).length) delete st.fedexFixes[awb]; }
   else f[key]=val;
 }
+function setLhFix(id,key,field,val){ const st=state[id]; st.lhFixes=st.lhFixes||{};
+  const f=st.lhFixes[key]||(st.lhFixes[key]={});
+  if(val===""||val==null){ delete f[field]; if(!Object.keys(f).length) delete st.lhFixes[key]; }
+  else f[field]=val;
+}
+function clearLhFixes(id){ state[id].lhFixes={}; if(state[id].result) rerun(id); }
+function lhResolveCardHtml(id,res,st){
+  const fixes=st.lhFixes||{};
+  const ports=[...new Set(((st.rate&&st.rate.rows)||[]).map(r=>r.port).filter(Boolean))].sort();
+  const inp=(key,field,val,ph,w)=>`<input type="text" value="${esc(val!=null?val:"")}" placeholder="${ph}" style="width:${w}px;padding:5px 7px;border:1px solid var(--line);border-radius:7px"
+      oninput="setLhFix('${id}','${key}','${field}',this.value)">`;
+  let h=`<div class="card" style="border:2px solid #e8912d;background:#fff8ec;box-shadow:0 2px 10px rgba(232,145,45,.18)"><div class="flexhead">
+    <div><div class="step" style="color:#b25e00">Review &amp; resolve — do this first</div>
+      <h3 style="color:#8a4b00">⚠ ${res.review.length} shipment(s) need your answer</h3>
+      <p class="sub">These are <b>not billed yet</b> — they are excluded from the total above. Pick the arriving port from the rate card, or type a rate per kg, then click <b>Recalculate</b>.</p></div>
+    <div style="display:flex;gap:8px">
+      <button class="sm" onclick="rerun('${id}')">⟳ Recalculate with my answers</button>
+      <button class="subtle sm" onclick="clearLhFixes('${id}')">Clear answers</button>
+      <button class="subtle sm" onclick="downloadReview('${id}')">⭳ Download review list</button>
+    </div></div>
+    <div class="tbl-scroll"><table><thead><tr><th>CN35</th><th>Shipment details (from your input)</th><th>Why it is flagged</th><th style="min-width:290px">Your answer</th></tr></thead><tbody>`;
+  res.review.forEach((rv,i)=>{
+    const key=String(rv._key||rv.cn35||("#"+(i+1))).replace(/['"\\]/g,"");
+    const fx=fixes[key]||{};
+    const det=[["Date",rv.date],["Bag",rv.bag],["Weight to charge",rv.charge!=null?rv.charge+" kg":null],
+      ["Actual weight",rv.actual!=null?rv.actual+" kg":null],["Destination",rv.dest],["Port of injection",rv.port||"(blank)"],
+      ["Airline",rv.airline],["Rate p/kg (input)",rv.ratein],["Cost (input)",rv.costin],["Remarks",rv.remarks]]
+      .filter(x=>x[1]!=null&&x[1]!=="")
+      .map(x=>`<span style="display:inline-block;margin:0 14px 2px 0"><span class="muted">${x[0]}:</span> <b>${esc(String(x[1]))}</b></span>`).join("");
+    h+=`<tr><td style="white-space:nowrap"><b>${esc(String(rv.cn35||"—"))}</b></td>
+      <td style="font-size:12px;line-height:1.8">${det||'<i class="muted">no details in input</i>'}</td>
+      <td style="color:#8a4b00">${esc(rv.reason||"")}</td>
+      <td><select onchange="setLhFix('${id}','${key}','port',this.value)" style="width:250px;padding:5px 7px;border:1px solid var(--line);border-radius:7px">
+          <option value="">— choose the arriving port —</option>
+          ${ports.map(p=>`<option value="${esc(p)}"${fx.port===p?" selected":""}>${esc(p)}</option>`).join("")}
+        </select>
+        <div style="margin-top:6px;font-size:12px" class="muted">or type a rate: ${inp(key,"sell",fx.sell,"rate /kg",80)} ${inp(key,"cost",fx.cost,"cost (optional)",110)}</div>
+        <div style="margin-top:6px;font-size:12px"><label style="cursor:pointer"><input type="checkbox"${fx.ignore?" checked":""} onchange="setLhFix('${id}','${key}','ignore',this.checked?'1':'')"> not a shipment — ignore this row</label></div></td></tr>`;
+  });
+  h+=`</tbody></table></div></div>`;
+  return h;
+}
 function clearFedexFixes(id){ state[id].fedexFixes={}; if(state[id].result) rerun(id); }
 function filterResults(id,val){ state[id]._filter=val; renderResult(id); try{ const inp=document.querySelector&&document.querySelector("#results_"+id+" input"); if(inp&&inp.focus){ inp.focus(); if(inp.setSelectionRange&&val) inp.setSelectionRange(val.length,val.length); } }catch(e){} }
 const settingsEdit={};
@@ -4117,7 +4172,9 @@ function renderResult(id){
 
   if(res.note) h+=`<p class="muted">${esc(res.note)}</p>`;
 
-  if(res.review.length && !svc.reviewResolve){
+  if(res.lhIgnored) h+=`<div class="banner">${res.lhIgnored} input row(s) ignored as “not a shipment”. Click <b>Clear answers</b> in Review &amp; resolve to bring them back.</div>`;
+  if(res.review.length && svc.lhResolve){ h+=lhResolveCardHtml(id,res,st); }
+  else if(res.review.length && !svc.reviewResolve){
     h+=`<div class="banner warn">⚠ <b>${res.review.length} row(s) need review</b> — excluded from the total:<br>`
       + res.review.slice(0,8).map(r=>`• ${esc(r.ship||r.track||r.awb||r.ref||"?")} — ${esc(r.reason)}`).join("<br>")
       + (res.review.length>8?`<br><i>…and ${res.review.length-8} more</i>`:"")
