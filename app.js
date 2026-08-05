@@ -247,13 +247,15 @@ const SERVICES = [
     const base=hdr.length;
     const head=hdr.concat(["Admin Fee (USD)","VAT Payable (SGD)","Admin Fee (SGD)","Customer"]);
     const sums=new Array(head.length).fill(null);
-    sums[base+1]=m2(ls.reduce((s,o)=>s+o.vatSgd,0)); sums[base+2]=m2(ls.reduce((s,o)=>s+o.feeSgd,0));
+    sums[base+1]="SGD "+round2(ls.reduce((s,o)=>s+round2(o.vatSgd),0)).toFixed(2);   /* = sum of the column as shown */
+    sums[base+2]="SGD "+round2(ls.reduce((s,o)=>s+round2(o.feeSgd),0)).toFixed(2);
     const aoa=[sums,head];
     ls.forEach(o=>{ const raw=((o._m&&o._m.raw)||[]).slice(0,base); while(raw.length<base) raw.push(null);
       aoa.push(raw.concat([o.feeUsd,m2(o.vatSgd),m2(o.feeSgd),o.customer])); });
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Monthly IOSS");
     const nm=(ls[0]&&ls[0].customer)||acct;
-    return {wb,name:("IOSS_"+nm+" ("+acct+")_Supporting File").replace(/[\/\\:*?\[\]"<>|]/g,"_")};
+    return {wb,name:("IOSS_"+nm+" ("+acct+")_Supporting File").replace(/[\/\\:*?\[\]"<>|]/g,"_"),
+      styleRefs:[{sheet:1,refs:[XLSX.utils.encode_col(base+1)+"1",XLSX.utils.encode_col(base+2)+"1"]}]};
   },
   buildRecon(res,st){ // Output 1 — Billing CALC with live formulas + Rate + Customer name sheets
     const fx=(st&&st.settings&&num(st.settings.fx))||1.34;
@@ -282,21 +284,23 @@ const SERVICES = [
     return {wb,name:"IOSS_Billing CALC"};
   },
   buildWorkbook(res,st){ // Output 2 — per-customer supporting files (values, sums on top)
-    const wb=XLSX.utils.book_new(), by={}, used={};
+    const wb=XLSX.utils.book_new(), by={}, used={}; const styleRefs=[]; let _si=0;
     res.lines.forEach(o=>{ (by[o.acct]=by[o.acct]||[]).push(o); });
     Object.keys(by).forEach(acct=>{
       const ls=by[acct], hdr=(ls[0]._m.hdr||[]);
       const base=hdr.length;
       const head=hdr.concat(["Admin Fee (USD)","VAT Payable (SGD)","Admin Fee (SGD)","Customer"]);
       const sums=new Array(head.length).fill(null);
-      sums[base+1]=m2(ls.reduce((s,o)=>s+o.vatSgd,0)); sums[base+2]=m2(ls.reduce((s,o)=>s+o.feeSgd,0));
+      sums[base+1]="SGD "+round2(ls.reduce((s,o)=>s+round2(o.vatSgd),0)).toFixed(2);  /* = sum of the column as shown */
+      sums[base+2]="SGD "+round2(ls.reduce((s,o)=>s+round2(o.feeSgd),0)).toFixed(2);
+      styleRefs.push({sheet:++_si, refs:[XLSX.utils.encode_col(base+1)+"1",XLSX.utils.encode_col(base+2)+"1"]});
       const aoa=[sums,head];
       ls.forEach(o=>{ const raw=(o._m.raw||[]).slice(0,base); while(raw.length<base) raw.push(null);
         aoa.push(raw.concat([o.feeUsd,m2(o.vatSgd),m2(o.feeSgd),o.customer])); });
       let nm=acct.replace(/[^\w]/g,"_").slice(0,28)||"Customer", k=nm,i=2; while(used[k]){k=nm+"_"+i++;} used[k]=1;
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),k);
     });
-    return {wb,name:"IOSS_Supporting per customer"};
+    return {wb,name:"IOSS_Supporting per customer",styleRefs};
   }
 },
 /* ---------------- Linehaul (bypass bag) ---------------- */
@@ -1346,8 +1350,8 @@ async function xlsxHighlightNonZero(u8, sheetIndex, sqref){
     return await zip.generateAsync({type:"array"});
   }catch(e){ console.error("highlight failed",e); return u8; }
 }
-async function xlsxStyleCells(u8, sheetIndex, refs){
-  if(typeof JSZip==="undefined" || !refs || !refs.length) return u8;
+async function xlsxStyleCells(u8, targets){   /* targets: [{sheet:1, refs:["H1"]}] — red bold text on light-yellow fill */
+  if(typeof JSZip==="undefined" || !targets || !targets.length) return u8;
   try{
     const zip=await JSZip.loadAsync(u8);
     let st=await zip.file("xl/styles.xml").async("string");
@@ -1360,10 +1364,12 @@ async function xlsxStyleCells(u8, sheetIndex, refs){
          .replace(/<cellXfs count="\d+"/, '<cellXfs count="'+(xfId+1)+'"')
          .replace("</cellXfs>", '<xf numFmtId="0" fontId="'+fontId+'" fillId="'+fillId+'" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>');
     zip.file("xl/styles.xml", st);
-    const path="xl/worksheets/sheet"+sheetIndex+".xml";
-    let sx=await zip.file(path).async("string");
-    refs.forEach(ref=>{ const re=new RegExp('(<c r="'+ref+'")'); if(re.test(sx)) sx=sx.replace(re, '$1 s="'+xfId+'"'); });
-    zip.file(path, sx);
+    for(const t of targets){
+      const path="xl/worksheets/sheet"+t.sheet+".xml", f=zip.file(path); if(!f) continue;
+      let sx=await f.async("string");
+      (t.refs||[]).forEach(ref=>{ const re=new RegExp('(<c r="'+ref+'")'); if(re.test(sx)) sx=sx.replace(re, '$1 s="'+xfId+'"'); });
+      zip.file(path, sx);
+    }
     return await zip.generateAsync({type:"array"});
   }catch(e){ console.error("style failed",e); return u8; }
 }
@@ -4229,10 +4235,11 @@ function downloadRecon(id){
   const {wb,name}=svc.buildRecon(res,st);
   XLSX.writeFile(wb, `${name}_${monthLabel(res)}.xlsx`);
 }
-function downloadCustomerFile(id,acct){ const svc=SVC[id],st=state[id],res=st&&st.result;
+async function downloadCustomerFile(id,acct){ const svc=SVC[id],st=state[id],res=st&&st.result;
   if(!res||!svc.buildCustomerFile) return;
-  const {wb,name}=svc.buildCustomerFile(res,st,acct);
-  XLSX.writeFile(wb,`${name}_${monthLabel(res)}.xlsx`); }
+  const cf=svc.buildCustomerFile(res,st,acct); const _fn=`${cf.name}_${monthLabel(res)}.xlsx`;
+  if(cf.styleRefs&&cf.styleRefs.length) saveU8(await xlsxStyleCells(XLSX.write(cf.wb,{type:"array",bookType:"xlsx"}), cf.styleRefs), _fn);
+  else XLSX.writeFile(cf.wb,_fn); }
 function downloadAllCustomerFiles(id){ const svc=SVC[id],st=state[id],res=st&&st.result; if(!res) return;
   const key=svc.customerKey||"customer";
   const accts=[...new Set(res.lines.map(o=>o[key]).filter(Boolean))].filter(a=>!(svc.customerFileExclude||[]).includes(a));
@@ -4269,7 +4276,10 @@ function monthEndPack(month){
 }
 async function downloadResult(id){
   const svc=SVC[id], st=state[id], res=st.result; if(!res||!res.lines.length){ alert("Nothing to download yet."); return; }
-  if(svc.buildWorkbook){ const {wb,name}=svc.buildWorkbook(res,st); XLSX.writeFile(wb, `${name}_${monthLabel(res)}.xlsx`); return; }
+  if(svc.buildWorkbook){ const bw=svc.buildWorkbook(res,st); const _fn=`${bw.name}_${monthLabel(res)}.xlsx`;
+    if(bw.styleRefs&&bw.styleRefs.length) saveU8(await xlsxStyleCells(XLSX.write(bw.wb,{type:"array",bookType:"xlsx"}), bw.styleRefs), _fn);
+    else XLSX.writeFile(bw.wb, _fn);
+    return; }
   const totals=summarize(res);
   const _ac=totals.hasCost&&!res.columns.some(c=>c.k==="cost");
   const header=res.columns.map(c=>c.l).concat(totals.hasCost?(_ac?["Cost (SGD)","GP (SGD)","GP %"]:["GP (SGD)","GP %"]):[]);
@@ -4296,7 +4306,7 @@ async function downloadResult(id){
   const fname = svc.outName ? `${svc.outName} - ${monthLabel(res)}.xlsx`
                             : `${svc.name.replace(/[^\w]+/g,"_")}_${monthLabel(res)}.xlsx`;
   const u8=XLSX.write(wb,{type:"array",bookType:"xlsx"});
-  saveU8(await xlsxStyleCells(u8,1,[_tref]), fname);
+  saveU8(await xlsxStyleCells(u8,[{sheet:1,refs:[_tref]}]), fname);
 }
 
 /* ---------- Records ---------- */
