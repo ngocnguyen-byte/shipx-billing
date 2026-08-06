@@ -25,6 +25,8 @@ function monthLabel(res){ if(res&&res.monthHint) return res.monthHint;
 const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const norm = s => String(s??"").toLowerCase().replace(/[^a-z0-9]/g,"");
 const todayISO = () => new Date().toISOString().slice(0,10);
+const prevMonthISO = () => { const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); };   /* billing is done for the month just ended */
 function toISO(d){ if(d instanceof Date){ /* SheetJS returns dates 30s short of midnight local (1 Jul -> 30 Jun 23:59:30) */
     const t=new Date(d.getTime()+30000), p=n=>String(n).padStart(2,"0");
     return t.getFullYear()+"-"+p(t.getMonth()+1)+"-"+p(t.getDate()); }
@@ -398,7 +400,7 @@ const SERVICES = [
     rows:[{vendor:"Anglers (1st pickup)",price:10},{vendor:"JustShip (2nd pickup)",price:5}] },
   genFields:[{key:"month",label:"Billing month",type:"month"}],
   generate(rate,opts,st){
-    const month=opts.month||todayISO().slice(0,7);
+    const month=opts.month||prevMonthISO();
     const [y,m]=month.split("-").map(Number);
     const days=new Date(y,m,0).getDate();
     const lines=[];
@@ -3767,7 +3769,7 @@ function renderService(v, svc){
         <p class="sub">No input file needed. Choose the month and generate.</p>
         <div class="filters">`;
     svc.genFields.forEach(f=>{
-      const val=st.opts[f.key]||todayISO().slice(0,7);
+      const val=st.opts[f.key]||(f.type==="month"?prevMonthISO():todayISO().slice(0,7));
       h+=`<label>${esc(f.label)} <input type="${f.type}" value="${val}" onchange="setOpt('${svc.id}','${f.key}',this.value)"></label>`;
     });
     h+=`<button onclick="runGenerator('${svc.id}')">Generate</button></div></div>`;
@@ -4154,7 +4156,7 @@ function rerun(id, rows){
 function pickupAdhocRows(){ const r=loadSavedRates("pickup:_adhoc"); return Array.isArray(r)?r.filter(x=>x&&typeof x==="object"):[]; }
 function pickupSaveAdhoc(id,rows,regen){ saveRatesFor("pickup:_adhoc",rows); render(); if(regen&&state[id]&&state[id].result) runGenerator(id); }
 function pickupAddAdhoc(id){ const rows=pickupAdhocRows().slice();
-  const m=(state[id]&&state[id].opts&&state[id].opts.month)||todayISO().slice(0,7);
+  const m=(state[id]&&state[id].opts&&state[id].opts.month)||prevMonthISO();
   rows.push({date:m+"-01",customer:"",note:""}); pickupSaveAdhoc(id,rows,false); }
 function pickupEditAdhoc(id,i,k,v){ const rows=pickupAdhocRows().slice(); if(!rows[i]) return;
   rows[i]=Object.assign({},rows[i],{[k]:v}); pickupSaveAdhoc(id,rows,true); }
@@ -4168,7 +4170,7 @@ function pickupAdhocFee(st,iso){
   return {fee:round2((wd===1||wd===4)?feeMT:feeOT), day:["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][wd], monThu:(wd===1||wd===4)};
 }
 function pickupAdhocCardHtml(svc,st){
-  const rows=pickupAdhocRows(), month=(st.opts&&st.opts.month)||todayISO().slice(0,7);
+  const rows=pickupAdhocRows(), month=(st.opts&&st.opts.month)||prevMonthISO();
   const S=st.settings||{}; const fMT=(num(S.adhocMonThu)!=null?num(S.adhocMonThu):5), fOT=(num(S.adhocOther)!=null?num(S.adhocOther):10);
   let h=`<div class="card"><div class="flexhead">
     <div><div class="step">Step 1b · Ad-hoc pickups</div><h3>Extra pickups on request</h3>
@@ -4589,6 +4591,23 @@ function persistRecordChange(r){
   if(typeof SB!=="undefined" && SB){ SB.from("billing_records").update({totals:r.totals}).eq("id",r.id).then(()=>{}); }
   else { saveRecords(loadRecords().map(x=>x.id===r.id?r:x)); }
 }
+function persistRecordFields(r,patch){
+  if(typeof SB!=="undefined" && SB){ SB.from("billing_records").update(patch).eq("id",r.id).then(({error})=>{ if(error){ console.error("record update failed",error); alert("Could not save the change to the shared database — check your connection and try again."); } }); }
+  else if(typeof saveRecords==="function"){ saveRecords(loadRecords().map(x=>x.id===r.id?r:x)); }
+}
+function editRecordMonth(rid){
+  const r=loadRecords().find(x=>x.id===rid); if(!r) return;
+  const cur=String(r.month||"");
+  const v=prompt("Billing month for this saved run — type it as YYYY-MM (e.g. 2026-07):\n\n"+r.service+(r.customer?(" · "+r.customer):"")+"\nSaved "+String(r.savedAt).slice(0,10)+", currently "+(cur||"(none)"), cur);
+  if(v===null) return;
+  const m=String(v).trim();
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)){ alert("“"+m+"” is not a valid month.\n\nUse YYYY-MM, for example 2026-07."); return; }
+  if(m===cur) return;
+  r.month=m;
+  persistRecordFields(r,{month:m});
+  logRateChange("_records","Saved run · "+r.service,"month",cur+" → "+m);
+  render();
+}
 function editRecordNote(rid){
   const r=loadRecords().find(x=>x.id===rid); if(!r) return;
   const cur=r.note||(r.totals&&r.totals.note)||"";
@@ -4621,7 +4640,7 @@ function renderRecords(v){
     && (!recFilter.customer||(r.customer||"—")===recFilter.customer));
   const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?"selected":""}>${esc(x)}</option>`).join("");
   let h=`<div class="card"><div class="flexhead"><div><div class="step">History</div>
-      <h3>Saved billing runs</h3><p class="sub">Shared across the team. Filter, re-download or delete.</p></div>
+      <h3>Saved billing runs</h3><p class="sub">Shared across the team. Filter, re-download or delete. Click a <b>Month</b> or <b>Note</b> to edit it.</p></div>
       <div style="display:flex;gap:8px"><button class="subtle sm" onclick="backupData()">⭳ Backup</button>
       <button class="subtle sm" onclick="restoreData()">⭱ Restore</button>
       <button class="danger sm" onclick="clearRecords()">Clear all</button></div></div>
@@ -4634,7 +4653,8 @@ function renderRecords(v){
       <th>Saved</th><th>Service</th><th>Customer</th><th>Month</th><th class="num">Billing</th><th class="num">Shipments</th>
       <th class="num">GP</th><th>Note</th><th></th></tr></thead><tbody>`;
   recs.forEach(r=>{
-    h+=`<tr><td>${esc(r.savedAt.slice(0,16).replace("T"," "))}</td><td>${esc(r.service)}</td><td>${esc(r.customer||"—")}</td><td>${esc(r.month)}</td>
+    h+=`<tr><td>${esc(r.savedAt.slice(0,16).replace("T"," "))}</td><td>${esc(r.service)}</td><td>${esc(r.customer||"—")}</td>
+      <td style="cursor:pointer;white-space:nowrap" onclick="editRecordMonth('${r.id}')" title="Click to correct the billing month">${esc(r.month)} <span class="muted">✎</span></td>
       <td class="num">${money(r.totals.amount)}</td><td class="num">${r.totals.shipments}</td>
       <td class="num">${r.totals.hasCost?money(r.totals.gp):"—"}</td>
       <td style="max-width:180px;cursor:pointer" onclick="editRecordNote('${r.id}')" title="Click to edit note">${esc(r.note||(r.totals&&r.totals.note)||"")||'<span class="muted">✎ add note</span>'}</td>
