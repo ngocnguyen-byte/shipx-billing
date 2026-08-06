@@ -389,12 +389,15 @@ const SERVICES = [
 {
   id:"pickup", name:"Pickup Surcharge", group:"Verified", tags:["Billing","No input"], status:"ready",
   generator:true,
-  description:"No input file. Pickups every Monday & Thursday. Two pickups per day at a fixed price.",
+  description:"No input file. Scheduled pickups every Monday & Thursday, two per day at a fixed price. Ad-hoc pickups can be added by date — Monday/Thursday are charged at the lower rate, any other day at the higher rate.",
+  adhocPickups:true,
+  settings:[{key:"adhocMonThu",label:"Ad-hoc pickup — Mon/Thu (SGD)",value:5},
+            {key:"adhocOther",label:"Ad-hoc pickup — other day (SGD)",value:10}],
   rate:{ keyCol:"vendor",
     cols:[{key:"vendor",label:"Pickup"},{key:"price",label:"Price (SGD)",num:true}],
     rows:[{vendor:"Anglers (1st pickup)",price:10},{vendor:"JustShip (2nd pickup)",price:5}] },
   genFields:[{key:"month",label:"Billing month",type:"month"}],
-  generate(rate,opts){
+  generate(rate,opts,st){
     const month=opts.month||todayISO().slice(0,7);
     const [y,m]=month.split("-").map(Number);
     const days=new Date(y,m,0).getDate();
@@ -404,17 +407,32 @@ const SERVICES = [
       if(wd===1||wd===4){
         const iso=`${month}-${String(d).padStart(2,"0")}`;
         const prs=rate.rows.filter(r=>r.vendor!=null&&r.vendor!=="");
-        const line={date:iso,customer:"Bpost",amount:0,cost:null};
+        const line={date:iso,customer:"Bpost",kind:"Scheduled (Mon/Thu)",amount:0,cost:null};
         prs.forEach((r,idx)=>{ const p=round2(num(r.price)||0); line["p"+idx]=p; line.amount=round2(line.amount+p); });
         lines.push(line);
       }
     }
+    const sched=lines.length;
+    /* ad-hoc pickups entered on the Billing tab — Mon/Thu cheaper than any other day */
+    const S=(st&&st.settings)||{};
+    const feeMT=(num(S.adhocMonThu)!=null?num(S.adhocMonThu):5), feeOT=(num(S.adhocOther)!=null?num(S.adhocOther):10);
+    const ad=(typeof pickupAdhocRows==="function")?pickupAdhocRows():[];
+    ad.forEach(a=>{ const iso=toISO(a.date); if(!/^\d{4}-\d{2}-\d{2}$/.test(iso) || iso.slice(0,7)!==month) return;
+      const p=iso.split("-").map(Number), wd=new Date(p[0],p[1]-1,p[2]).getDay(), mt=(wd===1||wd===4);
+      lines.push({date:iso,customer:String(a.customer||"").trim()||"Ad-hoc pickup",
+        kind:"Ad-hoc — "+(mt?"Mon/Thu":"other day")+(a.note?(" · "+a.note):""),
+        amount:round2(mt?feeMT:feeOT),cost:null}); });
+    const adhoc=lines.length-sched;
+    lines.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.customer).localeCompare(String(b.customer)));
     const prs=rate.rows.filter(r=>r.vendor!=null&&r.vendor!=="");
-    const cols=[{k:"date",l:"Pickup Date"}]
+    const cols=[{k:"date",l:"Pickup Date"},{k:"customer",l:"Customer"}]
       .concat(prs.map((r,idx)=>({k:"p"+idx,l:String(r.vendor)+" (SGD)",num:true,money:true})))
-      .concat([{k:"amount",l:"Total (SGD)",num:true,money:true,tot:true}]);
-    return {lines,review:[],currency:"$",billCustomer:"Bpost",summaryNote:lines.length+" pickup day(s) in "+month,
+      .concat([{k:"kind",l:"Type"},{k:"amount",l:"Total (SGD)",num:true,money:true,tot:true}]);
+    const out={lines,review:[],currency:"$",
+      summaryNote:sched+" scheduled pickup day(s)"+(adhoc?(" + "+adhoc+" ad-hoc pickup(s)"):"")+" in "+month,
       columns:cols};
+    if(!adhoc) out.billCustomer="Bpost";     /* keep the old single-customer grouping when there is no ad-hoc */
+    return out;
   }
 },
 /* ---------------- AME (Postal) ---------------- */
@@ -3753,6 +3771,7 @@ function renderService(v, svc){
       h+=`<label>${esc(f.label)} <input type="${f.type}" value="${val}" onchange="setOpt('${svc.id}','${f.key}',this.value)"></label>`;
     });
     h+=`<button onclick="runGenerator('${svc.id}')">Generate</button></div></div>`;
+    if(svc.adhocPickups) h+=pickupAdhocCardHtml(svc,st);
   } else {
     h+=`<div class="card"><div class="step">Step 1 · Upload input</div><h3>Billing input file(s)</h3>
         <p class="sub">Expected columns: ${svc.input.cols.map(c=>`<code>${esc(c.label)}</code>`).join(" ")}. Extra columns are ignored. You can drop several files at once.</p>
@@ -4131,9 +4150,49 @@ function rerun(id, rows){
   st.result.lines = st.result.lines.concat(adjLines(id));
   renderResult(id);
 }
+/* ---- Pickup surcharge: ad-hoc pickups (date + customer), shared with the team ---- */
+function pickupAdhocRows(){ const r=loadSavedRates("pickup:_adhoc"); return Array.isArray(r)?r.filter(x=>x&&typeof x==="object"):[]; }
+function pickupSaveAdhoc(id,rows,regen){ saveRatesFor("pickup:_adhoc",rows); render(); if(regen&&state[id]&&state[id].result) runGenerator(id); }
+function pickupAddAdhoc(id){ const rows=pickupAdhocRows().slice();
+  const m=(state[id]&&state[id].opts&&state[id].opts.month)||todayISO().slice(0,7);
+  rows.push({date:m+"-01",customer:"",note:""}); pickupSaveAdhoc(id,rows,false); }
+function pickupEditAdhoc(id,i,k,v){ const rows=pickupAdhocRows().slice(); if(!rows[i]) return;
+  rows[i]=Object.assign({},rows[i],{[k]:v}); pickupSaveAdhoc(id,rows,true); }
+function pickupDelAdhoc(id,i){ const rows=pickupAdhocRows().slice(); if(!rows[i]) return;
+  if(!confirm("Delete this ad-hoc pickup ("+(rows[i].date||"")+(rows[i].customer?" · "+rows[i].customer:"")+")?")) return;
+  rows.splice(i,1); pickupSaveAdhoc(id,rows,true); }
+function pickupAdhocFee(st,iso){
+  const S=(st&&st.settings)||{}; const feeMT=(num(S.adhocMonThu)!=null?num(S.adhocMonThu):5), feeOT=(num(S.adhocOther)!=null?num(S.adhocOther):10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(iso||""))) return null;
+  const p=String(iso).split("-").map(Number), wd=new Date(p[0],p[1]-1,p[2]).getDay();
+  return {fee:round2((wd===1||wd===4)?feeMT:feeOT), day:["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][wd], monThu:(wd===1||wd===4)};
+}
+function pickupAdhocCardHtml(svc,st){
+  const rows=pickupAdhocRows(), month=(st.opts&&st.opts.month)||todayISO().slice(0,7);
+  const S=st.settings||{}; const fMT=(num(S.adhocMonThu)!=null?num(S.adhocMonThu):5), fOT=(num(S.adhocOther)!=null?num(S.adhocOther):10);
+  let h=`<div class="card"><div class="flexhead">
+    <div><div class="step">Step 1b · Ad-hoc pickups</div><h3>Extra pickups on request</h3>
+      <p class="sub">Add the date of each ad-hoc pickup. <b>Monday or Thursday = S$${fMT}</b>, any other day = <b>S$${fOT}</b> (change these in ▤ Rate card &amp; settings).<br>
+      <span class="muted">Only dates inside the billing month (${esc(month)}) are billed — the rest stay here for later months.</span></p></div>
+    <div><button class="ghost sm" onclick="pickupAddAdhoc('${svc.id}')">+ Add pickup</button></div></div>
+    <div class="tbl-scroll"><table><thead><tr><th>Pickup date</th><th>Customer</th><th>Note</th><th>Day</th><th class="num">Fee (SGD)</th><th style="width:60px">Delete</th></tr></thead><tbody>`;
+  if(!rows.length) h+=`<tr><td colspan="6" class="muted">No ad-hoc pickups yet — click <b>+ Add pickup</b>.</td></tr>`;
+  rows.forEach((r,i)=>{
+    const f=pickupAdhocFee(st,toISO(r.date)), inMonth=String(toISO(r.date)).slice(0,7)===month;
+    h+=`<tr${inMonth?"":' style="opacity:.5"'}>
+      <td><input type="date" value="${esc(toISO(r.date))}" onchange="pickupEditAdhoc('${svc.id}',${i},'date',this.value)" style="padding:4px 6px;border:1px solid var(--line);border-radius:6px"></td>
+      <td><input type="text" value="${esc(r.customer||"")}" placeholder="customer name" onchange="pickupEditAdhoc('${svc.id}',${i},'customer',this.value)" style="width:190px;padding:4px 6px;border:1px solid var(--line);border-radius:6px"></td>
+      <td><input type="text" value="${esc(r.note||"")}" placeholder="optional" onchange="pickupEditAdhoc('${svc.id}',${i},'note',this.value)" style="width:150px;padding:4px 6px;border:1px solid var(--line);border-radius:6px"></td>
+      <td>${f?esc(f.day):"—"}${(f&&f.monThu)?' <span class="tag green">Mon/Thu</span>':''}</td>
+      <td class="num"><b>${f?money(f.fee):"—"}</b></td>
+      <td style="text-align:center"><span class="x" title="Delete" style="cursor:pointer;color:var(--danger);font-weight:700" onclick="pickupDelAdhoc('${svc.id}',${i})">×</span></td></tr>`;
+  });
+  h+=`</tbody></table></div>${rows.length?`<p class="sub" style="margin-top:8px">Rows outside ${esc(month)} are greyed out — they are not billed this month.</p>`:''}</div>`;
+  return h;
+}
 function runGenerator(id){
   const svc=SVC[id], st=state[id];
-  st.result = svc.generate.call(svc, st.rate, st.opts);
+  st.result = svc.generate.call(svc, st.rate, st.opts, st);
   st.result.lines = st.result.lines.concat(adjLines(id));
   renderResult(id);
 }
