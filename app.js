@@ -1380,7 +1380,7 @@ async function xlsxHighlightNonZero(u8, sheetIndex, sqref){
     if(sx.indexOf("</sheetData>")>=0) sx=sx.replace("</sheetData>", "</sheetData>"+cf);
     else sx=sx.replace("</worksheet>", cf+"</worksheet>");
     zip.file(path, sx);
-    return await zip.generateAsync({type:"array"});
+    return await zip.generateAsync({type:"uint8array"});   /* NOT "array" — that is a plain Array and Blob() writes it as text */
   }catch(e){ console.error("highlight failed",e); return u8; }
 }
 async function xlsxStyleCells(u8, targets){   /* targets: [{sheet:1, refs:["H1"]}] — red bold text on light-yellow fill */
@@ -1407,11 +1407,12 @@ async function xlsxStyleCells(u8, targets){   /* targets: [{sheet:1, refs:["H1"]
         sx=sx.replace(re, m=> / s="\d+"/.test(m) ? m.replace(/ s="\d+"/,' s="'+xfId+'"') : m+' s="'+xfId+'"'); });
       zip.file(path, sx);
     }
-    return await zip.generateAsync({type:"array"});
+    return await zip.generateAsync({type:"uint8array"});   /* NOT "array" — that is a plain Array and Blob() writes it as text */
   }catch(e){ console.error("style failed",e); return u8; }
 }
 function saveU8(u8, filename){
-  const blob=new Blob([u8],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  const bytes=(u8 instanceof Uint8Array||u8 instanceof ArrayBuffer)?u8:new Uint8Array(u8||[]);   /* a plain Array would be saved as text */
+  const blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>{try{URL.revokeObjectURL(a.href);}catch(e){}},5000);
 }
@@ -2893,7 +2894,7 @@ async function xlsxInjectLogo(u8, sheetIndex){
     if(ct.indexOf('Extension="png"')<0) ct=ct.replace("<Default", '<Default Extension="png" ContentType="image/png"/><Default', 1);
     if(ct.indexOf("drawingLogo.xml")<0) ct=ct.replace("</Types>", '<Override PartName="/xl/drawings/drawingLogo.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>');
     zip.file("[Content_Types].xml", ct);
-    return await zip.generateAsync({type:"array"});
+    return await zip.generateAsync({type:"uint8array"});   /* NOT "array" — that is a plain Array and Blob() writes it as text */
   }catch(e){ console.error("logo inject failed", e); return u8; }
 }
 async function prSaveWB(wb, filename){
