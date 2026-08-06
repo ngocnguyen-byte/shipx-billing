@@ -390,7 +390,7 @@ const SERVICES = [
 /* ---------------- Pickup Surcharge (generator) ---------------- */
 {
   id:"pickup", name:"Pickup Surcharge", group:"Verified", tags:["Billing","No input"], status:"ready",
-  generator:true,
+  generator:true, outName:"Bpost_Pick up Fuel Surcharge Billing_{month}",
   description:"No input file. Scheduled pickups every Monday & Thursday, two per day at a fixed price. Ad-hoc pickups can be added by date — Monday/Thursday are charged at the lower rate, any other day at the higher rate.",
   adhocPickups:true,
   settings:[{key:"adhocMonThu",label:"Ad-hoc pickup — Mon/Thu (SGD)",value:5},
@@ -430,7 +430,7 @@ const SERVICES = [
     const cols=[{k:"date",l:"Pickup Date"},{k:"customer",l:"Customer"}]
       .concat(prs.map((r,idx)=>({k:"p"+idx,l:String(r.vendor)+" (SGD)",num:true,money:true})))
       .concat([{k:"note",l:"Note"},{k:"amount",l:"Total (SGD)",num:true,money:true,tot:true}]);
-    const out={lines,review:[],currency:"$",
+    const out={lines,review:[],currency:"$",monthHint:MON[m-1]+" "+y,
       summaryNote:sched+" scheduled pickup day(s)"+(adhoc?(" + "+adhoc+" ad-hoc pickup(s)"):"")+" in "+month,
       columns:cols};
     if(!adhoc) out.billCustomer="Bpost";     /* keep the old single-customer grouping when there is no ad-hoc */
@@ -4523,8 +4523,9 @@ async function downloadResult(id){
     by.forEach(b=>s2.push([b.customer,b.shipments,m2(b.amount)].concat(totals.hasCost?[m2(b.gp), b.amount?round2(b.gp/b.amount*100):0]:[])));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s2),"By customer");
   }
-  const fname = svc.outName ? `${svc.outName} - ${monthLabel(res)}.xlsx`
-                            : `${svc.name.replace(/[^\w]+/g,"_")}_${monthLabel(res)}.xlsx`;
+  const _ml=monthLabel(res);
+  const fname = svc.outName ? ((svc.outName.indexOf("{month}")>=0 ? svc.outName.replace("{month}",_ml) : (svc.outName+" - "+_ml))+".xlsx")
+                            : `${svc.name.replace(/[^\w]+/g,"_")}_${_ml}.xlsx`;
   const u8=XLSX.write(wb,{type:"array",bookType:"xlsx"});
   saveU8(await xlsxStyleCells(u8,[{sheet:1,refs:[_tref]}]), fname);
 }
