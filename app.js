@@ -409,7 +409,7 @@ const SERVICES = [
       if(wd===1||wd===4){
         const iso=`${month}-${String(d).padStart(2,"0")}`;
         const prs=rate.rows.filter(r=>r.vendor!=null&&r.vendor!=="");
-        const line={date:iso,customer:"Bpost",kind:"Scheduled (Mon/Thu)",amount:0,cost:null};
+        const line={date:iso,customer:"Bpost",note:"",amount:0,cost:null};      /* scheduled pickups carry no note */
         prs.forEach((r,idx)=>{ const p=round2(num(r.price)||0); line["p"+idx]=p; line.amount=round2(line.amount+p); });
         lines.push(line);
       }
@@ -422,14 +422,14 @@ const SERVICES = [
     ad.forEach(a=>{ const iso=toISO(a.date); if(!/^\d{4}-\d{2}-\d{2}$/.test(iso) || iso.slice(0,7)!==month) return;
       const p=iso.split("-").map(Number), wd=new Date(p[0],p[1]-1,p[2]).getDay(), mt=(wd===1||wd===4);
       lines.push({date:iso,customer:String(a.customer||"").trim()||"Ad-hoc pickup",
-        kind:"Ad-hoc — "+(mt?"Mon/Thu":"other day")+(a.note?(" · "+a.note):""),
+        note:String(a.note||""),                                            /* exactly what you typed */
         amount:round2(mt?feeMT:feeOT),cost:null}); });
     const adhoc=lines.length-sched;
     lines.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.customer).localeCompare(String(b.customer)));
     const prs=rate.rows.filter(r=>r.vendor!=null&&r.vendor!=="");
     const cols=[{k:"date",l:"Pickup Date"},{k:"customer",l:"Customer"}]
       .concat(prs.map((r,idx)=>({k:"p"+idx,l:String(r.vendor)+" (SGD)",num:true,money:true})))
-      .concat([{k:"kind",l:"Type"},{k:"amount",l:"Total (SGD)",num:true,money:true,tot:true}]);
+      .concat([{k:"note",l:"Note"},{k:"amount",l:"Total (SGD)",num:true,money:true,tot:true}]);
     const out={lines,review:[],currency:"$",
       summaryNote:sched+" scheduled pickup day(s)"+(adhoc?(" + "+adhoc+" ad-hoc pickup(s)"):"")+" in "+month,
       columns:cols};
