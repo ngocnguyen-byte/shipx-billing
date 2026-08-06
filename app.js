@@ -3904,14 +3904,13 @@ function rateFileInputN(id,cardId){
 function applyRateFileN(id,cardId,rows){
   const c=cardDef(id,cardId);
   if(!rows.length){ alert("Empty rate file."); return; }
-  // find header row (row containing the key column name)
-  let hr=0; for(let i=0;i<Math.min(rows.length,6);i++){ const hd=rows[i].map(norm); if(hd.some(h=>h.includes("code")||h.includes("destination"))){ hr=i; break; } }
-  const hdr=rows[hr].map(norm);
-  const colIdx={}; c.cols.forEach(col=>{ colIdx[col.key]=hdr.findIndex(h=>h===norm(col.key)||h.includes(norm(col.label.split("(")[0]))); });
-  if(colIdx[c.keyCol]<0){ alert("Could not find the '"+c.keyCol+"' column in that file."); return; }
+  const found=rateColIdx(rows,c.cols,c.keyCol);
+  if(!found){ alert("Could not find the "+c.cols.map(x=>x.label).join(" / ")+" columns in that file.\n\nHeadings found: "+rateHdrList(rows)+"\n\nRename the country column to one of: Country Code / Code / Key / Country, or click ⭳ Download on a card to get the template."); return; }
+  const hr=found.hr, colIdx=found.idx;
   const nw=[];
   rows.slice(hr+1).forEach(r=>{ if(r[colIdx[c.keyCol]]==null||r[colIdx[c.keyCol]]==="") return;
     const o={}; c.cols.forEach(col=>{ const i=colIdx[col.key]; let v=i>=0?r[i]:(col.num?0:""); o[col.key]=col.num?num(v):v; }); nw.push(o); });
+  if(c.countryKey===c.keyCol){ for(let i=nw.length-1;i>=0;i--){ if(!/^[A-Za-z]{2,3}$/.test(String(nw[i][c.keyCol]||"").trim())) nw.splice(i,1); } }  /* drop notes/totals rows; keeps CNS/USW */
   if(nw.length){ logRateChange(id,c.label,"upload",nw.length+" rows loaded from file");
     state[id].rateCards[cardId].rows=nw; persistRateN(id,cardId); renderRateTableN(id,cardId); if(state[id].result) rerun(id);
     toast(id,`Loaded ${nw.length} rows into ${c.label}.`,"ok"); }
@@ -3959,15 +3958,56 @@ function rateFileInput(id){
     }; rd.readAsArrayBuffer(f); };
   inp.click();
 }
+/* ---- rate-file column matching: accept the headings real rate cards actually use ---- */
+const RATE_COL_ALIASES={
+  cc:["cc","key","code","countrycode","country","countryiso","iso","dest","destination","destinationcountrycode","lanecode"],
+  pc:["pc","pcrate","pcratesgd","pcratesg","perpiece","piecerate","ratepc","pcsgd"],
+  kg:["kg","kgrate","kgratesgd","kgratesg","perkg","weightrate","ratekg","kgsgd"],
+  sell:["sell","sellrate","rate","price","sellingrate"],
+  cost:["cost","costrate","buy","buyrate"]
+};
+function _rateColMatch(hdr,col){
+  const key=norm(col.key), lbl=norm(String(col.label||"").split("(")[0]);
+  let i=hdr.findIndex(h=>h===key); if(i>=0) return i;
+  if(lbl){ i=hdr.findIndex(h=>h===lbl); if(i>=0) return i; }
+  const al=RATE_COL_ALIASES[col.key]||[];
+  i=hdr.findIndex(h=>h&&al.indexOf(h)>=0); if(i>=0) return i;
+  if(lbl){ i=hdr.findIndex(h=>h&&(h.includes(lbl)||lbl.includes(h))); if(i>=0) return i; }
+  return -1;
+}
+function rateColIdx(rows,cols,keyCol){
+  let best={hr:0,idx:null,hits:-1};
+  for(let r=0;r<Math.min(rows.length,10);r++){
+    const hdr=(rows[r]||[]).map(norm);
+    const idx={}; let hits=0;
+    cols.forEach(c=>{ idx[c.key]=_rateColMatch(hdr,c); if(idx[c.key]>=0) hits++; });
+    if(idx[keyCol]>=0 && hits>best.hits) best={hr:r,idx,hits};
+  }
+  if(best.idx) return best;
+  /* last resort: a column of 2-letter country codes */
+  for(let r=0;r<Math.min(rows.length,10);r++){
+    const body=rows.slice(r+1,r+25);
+    for(let c=0;c<(rows[r]||[]).length;c++){
+      const vals=body.map(x=>String((x||[])[c]??"").trim()).filter(Boolean);
+      if(vals.length>=5 && vals.filter(v=>/^[A-Za-z]{2}$/.test(v)).length>=vals.length*0.8){
+        const hdr=(rows[r]||[]).map(norm), idx={};
+        cols.forEach(cd=>{ idx[cd.key]=_rateColMatch(hdr,cd); });
+        idx[keyCol]=c; return {hr:r,idx,hits:1};
+      }
+    }
+  }
+  return null;
+}
+function rateHdrList(rows){ return (rows[0]||[]).map(x=>String(x??"").trim()).filter(Boolean).join(", ")||"(no headings)"; }
 function applyRateFile(id,rows){
   const svc=SVC[id];
   if(!rows.length){ alert("Empty rate file."); return; }
-  const hdr=rows[0].map(x=>norm(x));
-  const colIdx={}; svc.rate.cols.forEach(c=>{ colIdx[c.key]=hdr.findIndex(h=>h.includes(norm(c.label.split("(")[0]))||h.includes(norm(c.key))); });
   const keyCol=svc.rate.keyCol;
-  if(colIdx[keyCol]<0){ alert("Could not find the key column ("+keyCol+") in that file. Header row must contain a matching name."); return; }
+  const found=rateColIdx(rows,svc.rate.cols,keyCol);
+  if(!found){ alert("Could not find the key column ("+keyCol+") in that file.\n\nHeadings found: "+rateHdrList(rows)); return; }
+  const colIdx=found.idx;
   const nw=[];
-  rows.slice(1).forEach(r=>{
+  rows.slice(found.hr+1).forEach(r=>{
     if(r[colIdx[keyCol]]==null||r[colIdx[keyCol]]==="") return;
     const o={}; svc.rate.cols.forEach(c=>{ const i=colIdx[c.key]; let val=i>=0?r[i]:(c.num?0:""); o[c.key]=c.num?num(val):val; });
     nw.push(o);
