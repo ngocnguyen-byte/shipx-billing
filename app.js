@@ -31,7 +31,10 @@ function toISO(d){ if(d instanceof Date){ /* SheetJS returns dates 30s short of 
     const t=new Date(d.getTime()+30000), p=n=>String(n).padStart(2,"0");
     return t.getFullYear()+"-"+p(t.getMonth()+1)+"-"+p(t.getDate()); }
   if(typeof d==="number" && d>30000 && d<60000){ const dt=new Date(Date.UTC(1899,11,30)); dt.setUTCDate(dt.getUTCDate()+d); return dt.toISOString().slice(0,10);}
-  const s=String(d??"").trim(); const m=s.match(/^(\d{4}-\d{2}-\d{2})/); return m?m[1]:s; }
+  const s=String(d??"").trim(); const m=s.match(/^(\d{4}-\d{2}-\d{2})/); if(m) return m[1];
+  const y=s.match(/^(19|20)(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/);   /* FedEx ships dates as 20260620 */
+  if(y) return y[1]+y[2]+"-"+y[3]+"-"+y[4];
+  return s; }
 function periodOf(iso){ const m=String(iso).match(/^(\d{4})-(\d{2})/); if(!m) return {y:"?",q:"?",m:"?"};
   const q="Q"+Math.ceil(parseInt(m[2])/3); return {y:m[1], q:m[1]+" "+q, m:m[1]+"-"+m[2]}; }
 
@@ -1086,7 +1089,7 @@ const SERVICES = [
         if(h==="Other Surcharge") return (o.billOther!=null?o.billOther:o.otherRaw);
         const i=nmap[norm(h)]; return i!==undefined?raw[i]:null; })); });
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Sheet1");
-    return {wb,name:"FedEx Billing - "+String(cust).replace(/[\/\\:*?\[\]"<>|]/g,"_")};
+    return {wb,name:("FedEx Billing - "+String(cust)+" - "+monthLabel(res)).replace(/[\/\\:*?\[\]"<>|]/g,"_"), nameHasMonth:true};
   },
   buildWorkbook(res,st){
     const wb=XLSX.utils.book_new(), by={}, used={};
@@ -4498,7 +4501,7 @@ function downloadRecon(id){
 }
 async function downloadCustomerFile(id,acct){ const svc=SVC[id],st=state[id],res=st&&st.result;
   if(!res||!svc.buildCustomerFile) return;
-  const cf=svc.buildCustomerFile(res,st,acct); const _fn=`${cf.name}_${monthLabel(res)}.xlsx`;
+  const cf=svc.buildCustomerFile(res,st,acct); const _fn=cf.nameHasMonth?`${cf.name}.xlsx`:`${cf.name}_${monthLabel(res)}.xlsx`;
   if(cf.styleRefs&&cf.styleRefs.length) saveU8(await xlsxStyleCells(XLSX.write(cf.wb,{type:"array",bookType:"xlsx"}), cf.styleRefs), _fn);
   else XLSX.writeFile(cf.wb,_fn); }
 function downloadAllCustomerFiles(id){ const svc=SVC[id],st=state[id],res=st&&st.result; if(!res) return;
@@ -4506,8 +4509,8 @@ function downloadAllCustomerFiles(id){ const svc=SVC[id],st=state[id],res=st&&st
   const accts=[...new Set(res.lines.map(o=>o[key]).filter(Boolean))].filter(a=>!(svc.customerFileExclude||[]).includes(a));
   if(typeof JSZip==="undefined"){ accts.forEach(a=>downloadCustomerFile(id,a)); return; }
   const zip=new JSZip();
-  accts.forEach(a=>{ const {wb,name}=svc.buildCustomerFile(res,st,a);
-    zip.file(name+"_"+monthLabel(res)+".xlsx", XLSX.write(wb,{type:"array",bookType:"xlsx"})); });
+  accts.forEach(a=>{ const cf=svc.buildCustomerFile(res,st,a);
+    zip.file((cf.nameHasMonth?cf.name:(cf.name+"_"+monthLabel(res)))+".xlsx", XLSX.write(cf.wb,{type:"array",bookType:"xlsx"})); });
   zip.generateAsync({type:"blob"}).then(blob=>{
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
     a.download=(svc.name.replace(/[^\w]+/g,"_"))+"_per-customer_"+monthLabel(res)+".zip";
