@@ -111,6 +111,7 @@ const _AME_CARDS={
 const _IOSS_CUST=[["SINBNB_001", "B&B Multi Services Ltd"], ["SINCBE_001", "Crossbo Exim"], ["SINGAI_001", "Gaia Trade Pvt Ltd"], ["KUL1SH_001", "1 Station Hub PLT"], ["KULRFR_001", "REZEKI FS RESOURCES"], ["KULPGC_001", "Paper Greek Co"], ["SINUDG_001", "Urban Dosing Grounds"], ["SINRYT_001", "rytParts Enterprise"], ["SINWMS_001", "We Move Solution Pte Ltd"], ["SINDSF_001", "DSF Pte Ltd"], ["KULNLP_001", "Nilai Permata Enterprise"], ["KULCTA_001", "Creative Appetite"], ["SINKLA_001", "Saputek Jaya Partindo , PT"], ["KULLBC_001", "LESBREW COFFEE"], ["SINADV_001", "ADVAGEN Pte Ltd"], ["SINNAW_001", "NAWABOOKS"], ["SINCOZ_001", "COZY HANDMADE LLP"], ["SINMGW_001", "Millenium Game World"], ["SINOHM_001", "Ohmmm Care Pte Ltd"], ["SINACE_001", "All Creative Enterprise Pte Ltd"], ["SINEDD_001", "Eddelux Pte. Ltd."], ["KULATS_001", "Alltrade Studio"], ["SINDND_001", "PT DND Kirim Indonesia"], ["SINUTT_001", "United Textile Trading Co Ltd"], ["SINXPB_001", "BusyBees Logistics Solutions Private Limited"], ["KULJYE_001", "Jihyo Enterprise"], ["SINSGL_001", "SG Link Co. Ltd"], ["SINWAK_001", "Waklu Inc"], ["KULKES_001", "Kooi Eng Store"], ["KULTNT_001", "Tung Network Trading"], ["KULBJA_001", "Ban Joo Auto"], ["SINMTG_001", "MTG-Asia Event Centre LLP"], ["KULECE_001", "Embroi Collection Enterprise"], ["KULEDS_001", "Ezie - Drunk Society"], ["SINSAT_001", "Sattva Sanctuary Pty Ltd"], ["KULSPC_001", "Supreme collectibles"], ["KULESE_001", "E Studio Enterprise"], ["KULOLE_001", "Olive St Enterprise"], ["SINTTT_001", "Thousand Taste Trading"], ["KULSRE_001", "Solaria Engineering"], ["KULEQE_001", "Eco Quote Enterprise"], ["KULGTK_001", "Goblintechkeys"], ["KULBYT_001", "Big Yellow Tag"], ["KULBTC_001", "ByTwinklingCo"], ["KULSGP_001", "SpeedGear Performance Parts"], ["SINPRO_001", "Profonde International Consultancy Co Ltd"], ["SINSGI_001", "Skylightz Gaming International Pte Ltd."], ["KULWWS_001", "Whimsy Whimsical Studio"], ["KULDHE_001", "Dollar Hunter Ent"], ["KULMLM_001", "Mori Loves Marine"], ["SINSML_001", "Shipmunk Logistics Pte Ltd"], ["KULANT_001", "Ana Tomy Sdn Bhd"], ["SINMKT_001", "MyKartero"], ["KULSZR_001", "Saizeera Enterprise"], ["KULPDH_001", "Pelita Dhihin"], ["KULAGE_001", "Alpha Group Express Services"], ["KULSJC_001", "Steam Jet Car Spa Sdn Bhd"], ["KULECS_001", "ECS Global Solutions"], ["KULRAT_001", "Raqs Attire"], ["KULDLV_001", "Delyva Sdn Bhd"], ["KULCRF_001", "Crafio Sdn. Bhd."], ["KULKBP_001", "Keebs Project"], ["KULLAS_001", "Laabiri Art Studios"], ["KULTG_001", "Triman Global Enterprise"], ["KULTTE_001", "TPV TEGUH ENTERPRISE"], ["KULJGE_001", "Jombuy Global Enterprise"], ["KULWWT_001", "Wadi Webstore Trading"], ["KULBSR_001", "Bear Storage"], ["KULTGE_001", "Triman Global Enterprise"], ["SINLOP_001", "Logistically Possible Pte Ltd"], ["KULSLD_001", "Salang Design"], ["KULBLB_001", "Black On Black Enterprise"], ["KULDSG_001", "DS Game Enterprise"], ["KULART_002", "ALAKETAM RESOURCES AND TRADING"], ["KULJPC_001", "Japanese Couture"], ["KULIVE_001", "lmago Avenue Enterprise"], ["KULAAA_001", "Amilo MY Walk-In"], ["SINSUP_001", "SUPREME INTERNATIONAL"], ["KULSBS_001", "Sepakat Bundle Store"], ["KULKRM_001", "Kirimman Retail Sdn Bhd"], ["KULMYD_001", "MY DAMAS SDN. BHD"], ["KULSSS_001", "Saff1 Store"], ["SINART_001", "ARTEMISBREAKS PTE LTD"], ["SINXPB_002", "BusyBees Logistics Solutions Private Limited"], ["SINXPB_003", "BusyBees Logistics Solutions Private Limited"], ["KULSNF_001", "SNF Mukmin Solutions"], ["KULOMT_001", "Ornamate Trading"], ["KULSKB_001", "Silkey Keyboards"], ["KULTSP_001", "Thready Studio Plt"], ["KULFZP_001", "Fazuan"], ["KULCFA_001", "Cheong & Fu Artisan Enterprise"], ["KULTSL_001", "The Syazam Legacy"], ["KULMAP_001", "Mohd Alhafis Bin Mohd Asri - Prepaid"], ["KULSNO_001", "SN Othman Enterprise"], ["SINSAT_002", "Sattva Sanctuary Pty Ltd"], ["KULAAA_002", "Amilo MY Walk-In"], ["KULNOZ_001", "NORAZLIN BINTI BOKHARI"], ["SINSUP_002", "SUPREME INTERNATIONAL"], ["SINUTT_002", "United Textile Trading Co Ltd"], ["KULROX_001", "RouxProject"], ["KULASS_001", "Aini Smart Solution"], ["KULCGB_001", "CY Global Resources Sdn Bhd"], ["SINPRO_002", "Profonde International Consultancy Co Ltd"], ["SINSUP_003", "SUPREME INTERNATIONAL"], ["SINJSP_001", "BPOST SINGAPORE PTE. LTD."]];
 const _CNAME={"#N/A":"Puerto Rico","AD":"Andorra","AE":"United Arab Emirates","AF":"Afghanistan","AG":"Antigua & Barbuda","AI":"Anguilla","AL":"Albania","AM":"Armenia","AN":"Netherlands Antilles","AO":"Angola","AR":"Argentina","AS":"American Samoa","AT":"Austria","AU":"Australia","AW":"Aruba","AZ":"Azerbaijan","BA":"Bosnia-Herzegovina","BB":"Barbados","BD":"Bangladesh","BE":"Belgium","BF":"Burkina Faso","BG":"Bulgaria","BH":"Bahrain","BI":"Burundi","BJ":"Benin","BM":"Bermuda","BN":"Brunei","BO":"Bolivia","BQ":"Bonaire","BR":"Brazil","BS":"Bahama","BT":"Bhutan","BW":"Botswana","BY":"Belarus","BZ":"Belize","CA":"Canada","CD":"Democratic Rep of Congo","CF":"Central African Republic","CG":"Democratic Republic of the Congo","CH":"Switzerland","CI":"Côte D'ivoire (Ivory Coast)","CK":"Cook Islands","CL":"Chile","CM":"Cameroon","CN":"Guangdong  510000-529999","CO":"Colombia","CR":"Costa Rica","CU":"Cuba","CV":"Cape Verde","CW":"Curacao","CY":"Cyprus","CZ":"Czech Republic","DE":"Germany","DJ":"Djibouti","DK":"Denmark","DM":"Dominica","DO":"Dominican Republic","DZ":"Algeria","EC":"Ecuador","EE":"Estonia","EG":"Egypt","ER":"Eritrea","ES":"Spain","ET":"Ethiopia","FI":"Finland","FJ":"Fiji","FK":"Falkland Islands (Malvinas)","FM":"Micronesia","FO":"Faeroe Islands","FR":"France","GA":"Gabon","GB":"United Kingdom (Great Britain)","GD":"Grenada","GE":"Georgia","GF":"French Guiana","GG":"Guernsey Island and Alderney","GH":"Ghana","GI":"Gibraltar","GL":"Greenland","GM":"Gambia","GN":"Guinea","GP":"Guadeloupe","GQ":"Equatorial Guinea","GR":"Greece","GS":"South Georgia And The South Sandwich Islands","GT":"Guatemala","GU":"Guam","GW":"Guinea-Bissau","GY":"Guyana","HK":"Hong Kong SAR, China","HN":"Honduras","HR":"Croatia","HT":"Haiti","HU":"Hungary","IC":"Canary Islands","ID":"Indonesia","IE":"Ireland","IL":"Israel","IM":"Isle Of Man","IN":"India","IO":"British Indian Ocean Territory","IQ":"Iraq","IR":"Iran","IS":"Iceland","IT":"Italy","JE":"Jersey","JM":"Jamaica","JO":"Jordan","JP":"Japan","KE":"Kenya","KG":"Kyrgyzstan","KH":"Cambodia","KI":"Kiribati","KM":"Comoros","KN":"St. Kitts and Nevis","KR":"South Korea","KW":"Kuwait","KY":"Cayman Islands","KZ":"Kazakhstan","LA":"Laos","LB":"Lebanon","LC":"Saint Lucia","LI":"Liechtenstein","LK":"Sri Lanka","LR":"Liberia","LS":"Lesotho","LT":"Lithuania","LU":"Luxembourg","LV":"Latvia","LY":"Libya","MA":"Morocco","MC":"Monaco","MD":"Republic of Moldova","ME":"Montenegro","MF":"St. Martin","MG":"Madagascar","MH":"Marshall Islands","MK":"Macedonia","ML":"Mali","MM":"Myanmar","MN":"Mongolia","MO":"Macau SAR, China","MP":"Northern Mariana Islands","MQ":"Martinique","MR":"Mauritania","MS":"Monserrat","MT":"Malta","MU":"Mauritius","MV":"Maldives","MW":"Malawi","MX":"Mexico","MY":"Malaysia","MZ":"Mozambique","NA":"Namibia","NC":"New Caledonia","NE":"Niger","NF":"Norfolk Island","NG":"Nigeria","NI":"Nicaragua","NL":"Netherlands","NO":"Norway","NP":"Nepal","NR":"Nauru","NU":"Niue","NZ":"New Zealand","OM":"Oman","PA":"Panama","PE":"Peru","PF":"French Polynesia","PG":"Papua New Guinea","PH":"Phillipines","PK":"Pakistan","PL":"Poland","PM":"St. Pierre & Miquelon","PN":"Pitcairn","PR":"Puerto Rico","PS":"Palestine Autonomous","PT":"Portugal","PW":"Palau","PY":"Paraguay","QA":"Qatar","RE":"Réunion","RO":"Romania","RS":"Serbia","RU":"Russian Federation","RW":"Rwanda","SA":"Saudi Arabia","SB":"Solomon Island","SC":"Seychelles","SD":"Sudan","SE":"Sweden","SH":"Saint Helena","SI":"Slovenia","SK":"Slovakia","SL":"Sierra Leone","SM":"San Marino","SN":"Senegal","SR":"Suriname","ST":"Sao Tome And Principe","SV":"El Salvador","SX":"St. Maarten","SY":"Syrian Arab Republic","SZ":"Swaziland","TC":"Turks & Caicos Islands","TD":"Chad","TF":"French Southern Territories","TG":"Togo","TH":"Thailand","TJ":"Tajikistan","TK":"Tokelau","TL":"East Timor","TM":"Turkmenistan","TN":"Tunisia","TO":"Tonga","TR":"Turkey","TT":"Trinidad & Tobago","TV":"Tuvalu","TW":"Taiwan","TZ":"United Republic of Tanzania","UA":"Ukraine","UG":"Uganda","US":"U.S. (Rest of Country)","UT":"Uruguay","UY":"Uruguay","UZ":"Uzbekistan","VA":"Holy See (Vatican City State)","VC":"St. Vincent & the Grenadines","VE":"Venezuela","VG":"British Virgin Islands","VI":"Virgin Islands. U.S.","VN":"Vietnam","VU":"Vanuatu","WF":"Wallis & Futuna","WS":"Samoa","YE":"Yemen","YT":"Mayotte","ZA":"South Africa","ZM":"Zambia","ZW":"Zimbabwe","CNS":"China — South (Guangdong 510000-529999 / Fujian 350000-369999)","USW":"United States — West Coast (CO ID UT AZ NV CA OR WA postcodes)"};
 const FEDEX_INTERNAL="Internal Company";   /* Review & resolve answer: our own shipment — no charge, GP 0 */
+const FEDEX_AMILOMY="Amilo MY";           /* billed at the FedEx charge +0.5% (Bpost) +5% — no rate card */
 const cname=c=>_CNAME[String(c||"").trim().toUpperCase()]||"";
 const SERVICES = [
 /* ---------------- CCL ---------------- */
@@ -871,6 +872,7 @@ const SERVICES = [
       if(fix && fix.customer===FEDEX_INTERNAL){        /* our own shipment — not billed to anyone, GP 0 */
         lines.push({awb:r.awb,date:toISO(r.date),customer:FEDEX_INTERNAL,dest:r.dest,weight:num(r.weight)||0,ratedW:num(r.rated),billW:null,
           freight:0,fuelRaw:0,otherRaw:0,netFreightRaw:0,surch:"",
+          billFreight:0,billFuel:0,billOther:0,
           amount:0,cost:0,fedexCost:(num(r.amount)!=null?round2(num(r.amount)):null),gp:0,
           note:"Internal Company — our own shipment, no charge",_m:{raw:r._raw,hdr:r._hdr}});
         return;
@@ -890,6 +892,7 @@ const SERVICES = [
         const _cost=(_bn0!=null?round2(_bn0*1.005):round2(_dt*1.005));
         lines.push({awb:r.awb,date:toISO(r.date),customer:rc.customer,dest:r.dest,weight:num(r.weight)||0,ratedW:num(r.rated),billW:null,
           freight:null,fuelRaw:0,otherRaw:round2(_dt),netFreightRaw:0,surch:_dn.join(" - "),
+          billFreight:0,billFuel:0,billOther:_amt,
           amount:_amt,cost:_cost,fedexCost:(_bn0!=null?round2(_bn0):round2(_dt)),gp:round2(_amt-_cost),
           note:"Duty/Tax — (surcharges ×1.005) ×1.08",_m:{raw:r._raw,hdr:r._hdr}});
         return;
@@ -934,12 +937,26 @@ const SERVICES = [
       } else { fuel=num(r.fuel)||0; other=num(r.other)||0; }
       if(fix){ if(num(fix.fuel)!=null){ fuel=num(fix.fuel); specialNote=(specialNote?specialNote+" · ":"")+"manual fuel"; }
         if(num(fix.other)!=null){ other=num(fix.other); specialNote=(specialNote?specialNote+" · ":"")+"manual other"; } }
+      if(rc.customer===FEDEX_AMILOMY){          /* no rate card: every element = FedEx charge ×1.005 ×1.05 */
+        let _nf=netF;
+        if(!(r._charges&&r._charges.length) && basis!=null) _nf=round2(basis-fuel-other);
+        const _bf=round2(_nf*1.005*1.05), _bu=round2(fuel*1.005*1.05), _bo=round2(other*1.005*1.05);
+        const _amt=round2(_bf+_bu+_bo);
+        lines.push({awb:r.awb,date:toISO(r.date),customer:rc.customer,dest:r.dest,weight:wt,ratedW,billW,
+          freight:_bf,fuelRaw:round2(fuel),otherRaw:round2(other),netFreightRaw:round2(_nf),surch:_snames.join(" - "),
+          billFreight:_bf,billFuel:_bu,billOther:_bo,
+          amount:_amt,cost,fedexCost,gp:(cost!=null?round2(_amt-cost):null),
+          note:(specialNote?specialNote+" · ":"")+"Amilo MY — FedEx charge +0.5% +5%",_m:{raw:r._raw,hdr:r._hdr}});
+        return;
+      }
       let amount, note=specialNote;
       if(freight!=null){ amount=round2(freight + fuel*1.05 + other*1.05); }
       else if(card){ review.push({...r,customer:rc.customer,reason:"No rate in "+rc.customer+" card for "+(r.dest||"?")+" @ "+billW+"kg"}); return; }
       else if(cost!=null){ amount=round2(cost*(1+rc.markup/100)); note="no card→markup"; }
       else { review.push({...r,customer:rc.customer,reason:"No rate card and no charge — cannot bill"}); return; }
-      lines.push({awb:r.awb,date:toISO(r.date),customer:rc.customer,dest:r.dest,weight:wt,ratedW,billW,freight,fuelRaw:round2(fuel),otherRaw:round2(other),netFreightRaw:round2(netF),surch:_snames.join(" - "),amount,cost,fedexCost,gp:(cost!=null?round2(amount-cost):null),note,_m:{raw:r._raw,hdr:r._hdr}});
+      lines.push({awb:r.awb,date:toISO(r.date),customer:rc.customer,dest:r.dest,weight:wt,ratedW,billW,freight,fuelRaw:round2(fuel),otherRaw:round2(other),netFreightRaw:round2(netF),surch:_snames.join(" - "),
+        billFreight:(freight!=null?round2(freight):null),billFuel:round2(fuel*1.05),billOther:round2(other*1.05),
+        amount,cost,fedexCost,gp:(cost!=null?round2(amount-cost):null),note,_m:{raw:r._raw,hdr:r._hdr}});
     });
     const rev=round2(lines.reduce((s,o)=>s+o.amount,0)), cst=round2(lines.reduce((s,o)=>s+(o.cost||0),0)), gp=round2(rev-cst);
     const recon={ title:"FedEx billing & margin summary",
@@ -1053,9 +1070,9 @@ const SERVICES = [
       aoa.push(_FEDEX_OUTCOLS.map(h=>{
         if(h==="Customer Name") return o.customer;
         if(h==="Surcharge Name") return o.surch||"";
-        if(h==="Freight") return o.netFreightRaw;
-        if(h==="Fuel Surcharge") return o.fuelRaw;
-        if(h==="Other Surcharge") return o.otherRaw;
+        if(h==="Freight") return (o.billFreight!=null?o.billFreight:o.netFreightRaw);          /* what the customer is billed */
+        if(h==="Fuel Surcharge") return (o.billFuel!=null?o.billFuel:o.fuelRaw);
+        if(h==="Other Surcharge") return (o.billOther!=null?o.billOther:o.otherRaw);
         const i=nmap[norm(h)]; return i!==undefined?raw[i]:null; })); });
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Sheet1");
     return {wb,name:"FedEx Billing - "+String(cust).replace(/[\/\\:*?\[\]"<>|]/g,"_")};
@@ -4318,8 +4335,11 @@ function renderResult(id){
       if(isCust){
         ctrl=`<div style="margin-bottom:6px"><select onchange="setFedexFix('${id}','${esc(awb)}','customer',this.value)"><option value="">— choose customer —</option>`+
           custs.map(c=>`<option ${fix.customer===c?"selected":""}>${esc(c)}</option>`).join("")+
-          `<option value="${FEDEX_INTERNAL}" ${fix.customer===FEDEX_INTERNAL?"selected":""}>${FEDEX_INTERNAL} — our own shipment, no charge</option></select></div>`+
-          (fix.customer===FEDEX_INTERNAL?`<div class="muted" style="font-size:12px;margin-bottom:6px">Billed 0.00 · GP 0.00 — no rate card needed.</div>`:cardCtrl);
+          `<option value="${FEDEX_INTERNAL}" ${fix.customer===FEDEX_INTERNAL?"selected":""}>${FEDEX_INTERNAL} — our own shipment, no charge</option>`+
+          `<option value="${FEDEX_AMILOMY}" ${fix.customer===FEDEX_AMILOMY?"selected":""}>${FEDEX_AMILOMY} — FedEx charge +0.5% +5%</option></select></div>`+
+          (fix.customer===FEDEX_INTERNAL?`<div class="muted" style="font-size:12px;margin-bottom:6px">Billed 0.00 · GP 0.00 — no rate card needed.</div>`
+           :fix.customer===FEDEX_AMILOMY?`<div class="muted" style="font-size:12px;margin-bottom:6px">Freight, fuel and other surcharge = the FedEx charge ×1.005 ×1.05 — no rate card needed.</div>`
+           :cardCtrl);
       }
       h+=`<tr><td>${esc(awb)}</td><td>${esc(rv.ref||rv.senderco||rv.billto||"")}</td><td class="muted">${esc(rv.reason)}</td><td>${ctrl}</td></tr>`;
     });
