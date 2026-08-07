@@ -882,20 +882,20 @@ const SERVICES = [
       if(fix&&fix.customer){ const fr=rules.find(u=>u.customer===fix.customer);
         rc={customer:fix.customer,card:(fr?fr.card:""),markup:(fr?fr.markup:0)}; }
       if(!rc){ review.push({...r,reason:"Unknown customer — '"+(ref||r.senderco||"(blank)")+"' matches no rule"}); return; }
-      if(String(r.itype||"").trim().toLowerCase().indexOf("duty")===0){ /* Duty/Tax invoice: (surcharges ×1.005) ×1.08 */
+      if(String(r.itype||"").trim().toLowerCase().indexOf("duty")===0){ /* Duty/Tax invoice: surcharges ×1.085 (0.5% + 8%) */
         let _dt=0; const _dn=[];
         (r._charges||[]).forEach(c=>{ const a=num(c.amount); const l=String(c.label||"").trim().toLowerCase();
           if(!l||l==="freight charges"||l==="base discount"||l==="automation bonus"||l==="fuel surcharge") return;
           if(a!=null) _dt+=a; _dn.push(c.label); });
         const _bn0=num(r.amount);
         if(!_dt&&_bn0!=null) _dt=_bn0;
-        const _amt=round2(_dt*1.005*1.08);
+        const _amt=round2(_dt*1.085);          /* 0.5% + 8% added together (user, 2026-08-07) */
         const _cost=(_bn0!=null?round2(_bn0*1.005):round2(_dt*1.005));
         lines.push({awb:r.awb,date:toISO(r.date),customer:rc.customer,dest:r.dest,weight:num(r.weight)||0,ratedW:num(r.rated),billW:null,
           freight:null,fuelRaw:0,otherRaw:round2(_dt),netFreightRaw:0,surch:_dn.join(" - "),
           billFreight:0,billFuel:0,billOther:_amt,
           amount:_amt,cost:_cost,fedexCost:(_bn0!=null?round2(_bn0):round2(_dt)),gp:round2(_amt-_cost),
-          note:"Duty/Tax — (surcharges ×1.005) ×1.08",_m:{raw:r._raw,hdr:r._hdr}});
+          note:"Duty/Tax — surcharges ×1.085 (+0.5% +8%)",_m:{raw:r._raw,hdr:r._hdr}});
         return;
       }
       const wt=num(r.weight)||0, ratedW=num(r.rated), baseW=(ratedW!=null?ratedW:wt), billW=Math.ceil(baseW*2)/2; // CEILING(Rated Weight,0.5) like the CALC
@@ -3708,7 +3708,7 @@ function fedexHowToHtml(){
       ["Fuel surcharge",F("invoice fuel × 1.05")],
       ["Other surcharges",F("Σ other surcharges × 1.05")+" — names listed in the Surcharge column"],
       ["<b>BILLING</b>",F("Freight + Fuel×1.05 + Other×1.05")],
-      ["Duty/Tax invoices (Invoice Type = Duty/Tax)",F("(Σ surcharges × 1.005) × 1.08")+" — no freight lookup"],
+      ["Duty/Tax invoices (Invoice Type = Duty/Tax)",F("Σ surcharges × 1.085  (0.5% + 8%)")+" — no freight lookup"],
       ["Missing rate / unknown customer","⚑ flagged in Review & resolve — never billed by assumption"]]))
   h+=box("3 · Reconciliation with FedEx (did they charge us right?)",
     tbl(["Item","Rule"],[
