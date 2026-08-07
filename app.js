@@ -833,11 +833,12 @@ const SERVICES = [
       }
       const row=_cmap[ckey]&&_cmap[ckey][key];
       return (row&&typeof row[2+wi]==="number")?row[2+wi]:null; };
-    const fixFreight=(dest,billW,fix,postal)=>{
+    const fixFreight=(dest,billW,fix,postal,sender,spostal)=>{
       if(!fix||!fix.card) return null;
       const c=String(fix.card).toUpperCase();
       if(c==="SGL2P") return lookup2P(billW);
-      if(c==="SGLRET") return lookupRET(String(dest||"").trim().toUpperCase(),billW,postal);
+      if(c==="SGLRET"){ const sk=String(sender||"").trim().toUpperCase();      /* import card → sender country */
+        return sk?lookupRET(sk,billW,(spostal!=null&&spostal!=="")?spostal:null):null; }
       const mm=MAT[c]; if(mm){ const a=mm[_destKeyCN(mm,dest,postal)]; if(a&&widx[billW]!=null&&a[widx[billW]]!=null) return a[widx[billW]]; }
       return null; };
     const lines=[],review=[];
@@ -904,24 +905,26 @@ const SERVICES = [
       const is2P=!isReturn && isSGL && svcType==="2P";
       const card=(isReturn||is2P)?null:(rc.card?MAT[rc.card]:null);
       let freight=null, specialNote=null;
-      if(fix&&fix.card){ const cf=fixFreight(r.dest,billW,fix,r.rpostal);   /* a card chosen in Review & resolve takes priority */
+      if(fix&&fix.card){ const cf=fixFreight(r.dest,billW,fix,r.rpostal,r.sender,r.spostal);   /* a card chosen in Review & resolve takes priority */
         if(cf!=null){ freight=cf; specialNote="card set in review ("+fix.card+")"; } }
       if(freight==null) if(isReturn){
-        const dk=(r.dest&&String(r.dest).trim().toUpperCase()!=="SG")?String(r.dest).trim().toUpperCase():String(r.sender||"").trim().toUpperCase();
-        const dkP=(r.dest&&String(r.dest).trim().toUpperCase()!=="SG")?r.rpostal:(r.spostal!=null?r.spostal:r.rpostal);
-        freight=lookupRET(dk,billW,dkP); specialNote="return · import card";
-        if(freight==null && fix){ const cf=fixFreight(r.dest,billW,fix,r.rpostal);
+        /* SGL Import (returns) card is keyed on the SENDER country — the shipment comes INTO Singapore */
+        const dk=String(r.sender||"").trim().toUpperCase();
+        const dkP=(r.spostal!=null&&r.spostal!=="")?r.spostal:null;
+        freight=(dk?lookupRET(dk,billW,dkP):null); specialNote="return · import card (sender country)";
+        if(freight==null && !dk){ review.push({...r,customer:rc.customer,reason:"Return: Sender Address Country/Territory is blank — cannot pick the import rate"}); return; }
+        if(freight==null && fix){ const cf=fixFreight(r.dest,billW,fix,r.rpostal,r.sender,r.spostal);
           if(cf!=null){ freight=cf; specialNote="return · card set in review ("+fix.card+")"; }
           else if(num(fix.freight)!=null){ freight=round2(num(fix.freight)); specialNote="return · manual freight"; } }
         if(freight==null){ review.push({...r,customer:rc.customer,reason:"Return: no import rate for "+(dk||"?")+" @ "+billW+"kg"}); return; }
       } else if(is2P){
         freight=lookup2P(billW); specialNote="2P · Zone G card";
-        if(freight==null && fix){ const cf=fixFreight(r.dest,billW,fix,r.rpostal);
+        if(freight==null && fix){ const cf=fixFreight(r.dest,billW,fix,r.rpostal,r.sender,r.spostal);
           if(cf!=null){ freight=cf; specialNote="2P · card set in review ("+fix.card+")"; }
           else if(num(fix.freight)!=null){ freight=round2(num(fix.freight)); specialNote="2P · manual freight"; } }
         if(freight==null){ review.push({...r,customer:rc.customer,reason:"2P: no Zone G rate @ "+billW+"kg"}); return; }
       } else if(card){ const a=card[_destKeyCN(card,r.dest,r.rpostal)]; if(a && widx[billW]!=null && a[widx[billW]]!=null) freight=a[widx[billW]]; }
-      if(freight==null && fix){ const cf=fixFreight(r.dest,billW,fix,r.rpostal);
+      if(freight==null && fix){ const cf=fixFreight(r.dest,billW,fix,r.rpostal,r.sender,r.spostal);
         if(cf!=null){ freight=cf; specialNote=(specialNote?specialNote+" · ":"")+"card set in review ("+fix.card+")"; }
         else if(num(fix.freight)!=null){ freight=round2(num(fix.freight)); specialNote=(specialNote?specialNote+" · ":"")+"manual freight"; } }
       if(fix&&fix.customer) specialNote=(specialNote?specialNote+" · ":"")+"customer set in review";
