@@ -1068,9 +1068,17 @@ const SERVICES = [
     const ls=res.lines.filter(o=>o.customer===cust);
     const hdr=(ls[0]&&ls[0]._m&&ls[0]._m.hdr)||[];
     const nmap={}; hdr.forEach((h,i)=>{ if(nmap[norm(h)]===undefined) nmap[norm(h)]=i; });
-    const aoa=[[], _FEDEX_OUTCOLS];
+    const isSGL=/sg\s*link/i.test(String(cust||""));
+    const OUT=_FEDEX_OUTCOLS.filter(h=>h!=="Surcharge Name"||isSGL);      /* surcharge names: SG Link only */
+    const _sum=k=>round2(ls.reduce((s,o)=>s+(num(o[k])||0),0));
+    const row1=OUT.map(()=>null);                                        /* totals above the three charge columns */
+    const _fi=OUT.indexOf("Freight"), _ui=OUT.indexOf("Fuel Surcharge"), _oi=OUT.indexOf("Other Surcharge");
+    if(_fi>=0) row1[_fi]=m2(_sum("billFreight"));
+    if(_ui>=0) row1[_ui]=m2(_sum("billFuel"));
+    if(_oi>=0) row1[_oi]=m2(_sum("billOther"));
+    const aoa=[row1, OUT];
     ls.forEach(o=>{ const raw=(o._m&&o._m.raw)||[];
-      aoa.push(_FEDEX_OUTCOLS.map(h=>{
+      aoa.push(OUT.map(h=>{
         if(h==="Customer Name") return o.customer;
         if(h==="Surcharge Name") return o.surch||"";
         if(h==="Freight") return (o.billFreight!=null?o.billFreight:o.netFreightRaw);          /* what the customer is billed */
