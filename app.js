@@ -937,16 +937,16 @@ const SERVICES = [
       } else { fuel=num(r.fuel)||0; other=num(r.other)||0; }
       if(fix){ if(num(fix.fuel)!=null){ fuel=num(fix.fuel); specialNote=(specialNote?specialNote+" · ":"")+"manual fuel"; }
         if(num(fix.other)!=null){ other=num(fix.other); specialNote=(specialNote?specialNote+" · ":"")+"manual other"; } }
-      if(rc.customer===FEDEX_AMILOMY){          /* no rate card: every element = FedEx charge ×1.005 ×1.05 */
+      if(rc.customer===FEDEX_AMILOMY){          /* no rate card: freight = cost +0.5% +5%; fuel & other passed through at cost */
         let _nf=netF;
         if(!(r._charges&&r._charges.length) && basis!=null) _nf=round2(basis-fuel-other);
-        const _bf=round2(_nf*1.005*1.05), _bu=round2(fuel*1.005*1.05), _bo=round2(other*1.005*1.05);
+        const _bf=round2(_nf*1.005*1.05), _bu=round2(fuel), _bo=round2(other);
         const _amt=round2(_bf+_bu+_bo);
         lines.push({awb:r.awb,date:toISO(r.date),customer:rc.customer,dest:r.dest,weight:wt,ratedW,billW,
           freight:_bf,fuelRaw:round2(fuel),otherRaw:round2(other),netFreightRaw:round2(_nf),surch:_snames.join(" - "),
           billFreight:_bf,billFuel:_bu,billOther:_bo,
           amount:_amt,cost,fedexCost,gp:(cost!=null?round2(_amt-cost):null),
-          note:(specialNote?specialNote+" · ":"")+"Amilo MY — FedEx charge +0.5% +5%",_m:{raw:r._raw,hdr:r._hdr}});
+          note:(specialNote?specialNote+" · ":"")+"Amilo MY — freight +0.5% +5%, fuel/other at cost",_m:{raw:r._raw,hdr:r._hdr}});
         return;
       }
       let amount, note=specialNote;
@@ -4336,9 +4336,9 @@ function renderResult(id){
         ctrl=`<div style="margin-bottom:6px"><select onchange="setFedexFix('${id}','${esc(awb)}','customer',this.value)"><option value="">— choose customer —</option>`+
           custs.map(c=>`<option ${fix.customer===c?"selected":""}>${esc(c)}</option>`).join("")+
           `<option value="${FEDEX_INTERNAL}" ${fix.customer===FEDEX_INTERNAL?"selected":""}>${FEDEX_INTERNAL} — our own shipment, no charge</option>`+
-          `<option value="${FEDEX_AMILOMY}" ${fix.customer===FEDEX_AMILOMY?"selected":""}>${FEDEX_AMILOMY} — FedEx charge +0.5% +5%</option></select></div>`+
+          `<option value="${FEDEX_AMILOMY}" ${fix.customer===FEDEX_AMILOMY?"selected":""}>${FEDEX_AMILOMY} — freight +0.5% +5%, surcharges at cost</option></select></div>`+
           (fix.customer===FEDEX_INTERNAL?`<div class="muted" style="font-size:12px;margin-bottom:6px">Billed 0.00 · GP 0.00 — no rate card needed.</div>`
-           :fix.customer===FEDEX_AMILOMY?`<div class="muted" style="font-size:12px;margin-bottom:6px">Freight, fuel and other surcharge = the FedEx charge ×1.005 ×1.05 — no rate card needed.</div>`
+           :fix.customer===FEDEX_AMILOMY?`<div class="muted" style="font-size:12px;margin-bottom:6px">Freight = FedEx freight ×1.005 ×1.05; fuel &amp; other surcharge billed at cost — no rate card needed.</div>`
            :cardCtrl);
       }
       h+=`<tr><td>${esc(awb)}</td><td>${esc(rv.ref||rv.senderco||rv.billto||"")}</td><td class="muted">${esc(rv.reason)}</td><td>${ctrl}</td></tr>`;
