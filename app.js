@@ -1297,7 +1297,9 @@ function docketReconcile(st){
     rows.push({docket:l.docket,date:l.date,mode:l.mode,schm:l.schm,rate:l.rate,country,code:code||"",weight:l.weight,qty:l.qty,
       billed:round2(l.postage),expected:expPost,sgl:sgPost,diff:round2(l.postage-expPost)});
   });
-  const notBilled=[...dockSet].filter(d=>!invSet.has(d));
+  const notBilled=[...dockSet].filter(d=>!invSet.has(d));          /* posted but not on the invoice */
+  const invOnly=[...invSet].filter(d=>!dockSet.has(d));            /* billed but no docket PDF uploaded */
+  const matchedDockets=[...invSet].filter(d=>dockSet.has(d)).length;
   const notBilledDetail=notBilled.map(dk=>{ const ls=byDocket[dk]||[]; let q=0,w=0,el=0,es=0;
     ls.forEach(x=>{ const code=spCodeFor(x.country); const lc=code?lins[norm(code)]:null, sc=code?sgl[norm(code)]:null;
       q+=x.qty; w+=x.weight; if(lc){ el+=(lc.item||0)*x.qty+(lc.kg||0)*x.weight; } if(sc){ es+=(sc.item||0)*x.qty+(sc.kg||0)*x.weight; } });
@@ -1328,7 +1330,7 @@ function docketReconcile(st){
   });
   const variance=round2(billed-exp), margin=round2(sglTot-billed);
   return {rows,review,billed:round2(billed),exp:round2(exp),variance,sglTot:round2(sglTot),margin,
-    qtyTot,wtTot:round2(wtTot),notBilled,notBilledDetail,discrepancies,dockets:dockSet.size,invDockets:invSet.size,
+    qtyTot,wtTot:round2(wtTot),notBilled,notBilledDetail,invOnly,matchedDockets,discrepancies,dockets:dockSet.size,invDockets:invSet.size,
     sp, spBilled:round2(spBilled), spExp:round2(spExp), spVariance:round2(spBilled-spExp),
     spSgl:round2(spSgl), spMargin:round2(spSgl-spBilled), spQty:spQty, spWt:round2(spWt)};
 }
@@ -1603,10 +1605,86 @@ function renderDocketResults(id){
   if(!el) return;
   const gpPct=r.sglTot?round2(r.margin/r.sglTot*100):0;
   const ok=Math.abs(r.variance)<Math.max(2,r.exp*0.001);
-  let h="";
-  if(r.sp&&r.sp.length){                        /* Speedpost — priced from the invoice sheet, no dockets */
+  const hasSp=!!(r.sp&&r.sp.length), hasEp=!!(r.rows.length||r.invoiceLines0||r.notBilled.length);
+  const tBilled=round2(r.billed+(hasSp?r.spBilled:0)), tExp=round2(r.exp+(hasSp?r.spExp:0));
+  const tSgl=round2(r.sglTot+(hasSp?r.spSgl:0)), tMargin=round2(r.margin+(hasSp?r.spMargin:0));
+  const dockOK=(r.notBilled.length===0 && (r.invOnly||[]).length===0 && r.discrepancies.length===0);
+  /* ---- summary of the whole run ---- */
+  let h=`<div class="card" style="border-color:var(--accent2)"><div class="flexhead">
+    <div><div class="step">Summary</div><h3>Singpost July run — ${hasSp?"ePAC + Speedpost":"ePAC"}</h3>
+      <p class="sub">Both services reconciled against SingPost/Linscomm, then billed to SG Link.</p></div>
+    <div style="display:flex;gap:8px">
+      <button class="ghost" onclick="downloadDocketRecon('${id}')">⭳ Reconciliation</button>
+      <button class="ghost" onclick="downloadDocketSGL('${id}')">⭳ SG Link billing</button></div></div>
+    <div class="tbl-scroll"><table><thead><tr><th>Service</th><th class="num">Lines</th><th class="num">Articles</th>
+      <th class="num">Weight (kg)</th><th class="num">Vendor billed</th><th class="num">Rate-card expected</th>
+      <th class="num">Variance</th><th class="num">Billing to SG Link</th><th class="num">Margin</th></tr></thead><tbody>
+      <tr><td><b>ePAC</b></td><td class="num">${r.rows.length}</td><td class="num">${r.qtyTot}</td><td class="num">${r.wtTot}</td>
+        <td class="num">${money(r.billed)}</td><td class="num">${money(r.exp)}</td>
+        <td class="num"${Math.abs(r.variance)>=1?' style="color:var(--danger);font-weight:700"':''}>${money(r.variance)}</td>
+        <td class="num">${money(r.sglTot)}</td><td class="num">${money(r.margin)}</td></tr>
+      ${hasSp?`<tr><td><b>Speedpost</b></td><td class="num">${r.sp.length}</td><td class="num">${r.spQty}</td><td class="num">${r.spWt}</td>
+        <td class="num">${money(r.spBilled)}</td><td class="num">${money(r.spExp)}</td>
+        <td class="num"${Math.abs(r.spVariance)>=1?' style="color:var(--danger);font-weight:700"':''}>${money(r.spVariance)}</td>
+        <td class="num">${money(r.spSgl)}</td><td class="num">${money(r.spMargin)}</td></tr>`:''}
+      <tr style="background:var(--accent-soft);font-weight:700"><td>TOTAL</td><td class="num">${r.rows.length+(hasSp?r.sp.length:0)}</td>
+        <td class="num">${r.qtyTot+(hasSp?r.spQty:0)}</td><td class="num">${round2(r.wtTot+(hasSp?r.spWt:0))}</td>
+        <td class="num">${money(tBilled)}</td><td class="num">${money(tExp)}</td><td class="num">${money(round2(tBilled-tExp))}</td>
+        <td class="num">${money(tSgl)}</td><td class="num">${money(tMargin)}</td></tr>
+    </tbody></table></div>
+    <div class="banner ${dockOK?'ok':'warn'}" style="margin-top:12px">${dockOK
+      ? `✓ Dockets match: all <b>${r.matchedDockets}</b> docket(s) in the Linscomm invoice were found in your uploaded dockets, with the same quantity and weight.`
+      : `⚠ Docket check: ${r.notBilled.length} posted but not billed · ${(r.invOnly||[]).length} billed without a docket · ${r.discrepancies.length} with different qty/weight — see the ePAC part below.`}</div>
+  </div>`;
+  /* ---- part 1 · ePAC ---- */
+  h+=`<div class="card"><div class="flexhead"><div><div class="step">Part 1 · ePAC</div>
+      <h3>Docket check — are the Linscomm dockets and my dockets the same?</h3></div></div>
+    <div class="metrics">
+      <div class="metric accent"><div class="lbl">Dockets I uploaded</div><div class="val">${r.dockets}</div></div>
+      <div class="metric"><div class="lbl">Dockets on the invoice</div><div class="val">${r.invDockets}</div></div>
+      <div class="metric ${dockOK?'good':''}"><div class="lbl">Matched</div><div class="val">${r.matchedDockets}</div></div>
+      <div class="metric ${r.notBilled.length?'warn':''}"><div class="lbl">Posted, not billed</div><div class="val">${r.notBilled.length}</div></div>
+      <div class="metric ${(r.invOnly||[]).length?'warn':''}"><div class="lbl">Billed, no docket</div><div class="val">${(r.invOnly||[]).length}</div></div>
+      <div class="metric ${r.discrepancies.length?'warn':''}"><div class="lbl">Qty/weight differs</div><div class="val">${r.discrepancies.length}</div></div>
+    </div>`;
+  if(r.notBilled.length) h+=`<div class="banner warn">⚠ <b>${r.notBilled.length}</b> docket(s) posted but NOT in the Linscomm invoice: ${r.notBilled.slice(0,10).map(esc).join(", ")}${r.notBilled.length>10?'…':''}</div>`;
+  if((r.invOnly||[]).length) h+=`<div class="banner warn">⚠ <b>${r.invOnly.length}</b> docket(s) billed by Linscomm with no docket PDF uploaded: ${r.invOnly.slice(0,10).map(esc).join(", ")}${r.invOnly.length>10?'…':''}</div>`;
+  h+=`</div>`;
+  h+=`<div class="card"><div class="flexhead">
+    <div><div class="step">Part 1 · ePAC</div><h3>Is Linscomm's rate correct?</h3></div>
+    <button class="ghost" onclick="downloadDocketRecon('${id}')">⭳ Download reconciliation</button></div>
+    <div class="metrics">
+    <div class="metric accent"><div class="lbl">Dockets billed</div><div class="val">${r.invDockets}</div></div>
+    <div class="metric"><div class="lbl">Matched lines</div><div class="val">${r.rows.length}</div></div>
+    <div class="metric"><div class="lbl">Articles</div><div class="val">${r.qtyTot}</div></div>
+    <div class="metric"><div class="lbl">Weight (kg)</div><div class="val" style="font-size:19px">${r.wtTot}</div></div>
+    <div class="metric"><div class="lbl">Linscomm billed</div><div class="val" style="font-size:19px">${money(r.billed)}</div></div>
+    <div class="metric"><div class="lbl">Rate-expected</div><div class="val" style="font-size:19px">${money(r.exp)}</div></div>
+    <div class="metric"><div class="lbl">Variance</div><div class="val" style="font-size:19px">${money(r.variance)}</div></div>
+    </div>
+    <div class="banner ${ok?'ok':'warn'}">${ok
+      ?'✓ Linscomm charged the correct ePAC rate (variance '+money(r.variance)+' = rounding).'
+      :'⚠ Rate variance '+money(r.variance)+' across '+r.rows.length+' lines — rows where Diff_Postage ≠ 0 are highlighted red (and in the download).'}</div>`;
+  if(r.notBilled.length) h+=`<div class="banner warn">⚠ ${r.notBilled.length} docket(s) posted but NOT in the Linscomm invoice: ${r.notBilled.slice(0,10).map(esc).join(", ")}${r.notBilled.length>10?'…':''}</div>`;
+  if(r.review.length) h+=`<div class="banner warn">⚠ ${r.review.length} line(s) couldn't be matched/coded (listed in the reconciliation download).</div>`;
+  h+=`</div>`;
+  h+=`<div class="card"><div class="flexhead"><div><div class="step">Part 1 · ePAC</div><h3>ePAC billing to SG Link</h3></div>
+    <button class="ghost" onclick="downloadDocketSGL('${id}')">⭳ Download SG Link billing</button></div>
+    <div class="metrics">
+    <div class="metric accent"><div class="lbl">SG Link billing</div><div class="val">${money(r.sglTot)}</div></div>
+    <div class="metric good"><div class="lbl">Margin over Linscomm (S$)</div><div class="val">${money(r.margin)}</div></div>
+    <div class="metric good"><div class="lbl">Margin over Linscomm (%)</div><div class="val">${gpPct.toFixed(1)}%</div></div></div>`;
+  h+=`<div class="tbl-scroll" style="margin-top:12px"><table><thead><tr><th>Docket</th><th>Country</th><th>Code</th>
+    <th class="num">Wt</th><th class="num">Qty</th><th class="num">Linscomm billed</th><th class="num">Expected</th><th class="num">Diff_Postage</th><th class="num">SG Link</th></tr></thead><tbody>`;
+  r.rows.slice(0,200).forEach(o=>{ const nz=Math.abs(o.diff)>0.005; h+=`<tr${nz?' class="gpneg" title="Diff_Postage ≠ 0"':''}><td>${esc(o.docket)}</td><td>${esc(o.country)}</td><td>${esc(o.code)}</td>
+    <td class="num">${o.weight}</td><td class="num">${o.qty}</td><td class="num">${o.billed.toFixed(2)}</td>
+    <td class="num">${o.expected.toFixed(2)}</td><td class="num">${o.diff.toFixed(2)}</td><td class="num">${o.sgl!=null?o.sgl.toFixed(2):"—"}</td></tr>`; });
+  h+=`</tbody></table></div>`;
+  if(r.rows.length>200) h+=`<p class="muted">Showing 200 of ${r.rows.length} — the downloads have them all.</p>`;
+  h+=`</div>`;
+  if(hasSp){
     const spOk=Math.abs(r.spVariance)<Math.max(2,r.spExp*0.001);
-    h+=`<div class="card"><div class="flexhead"><div><div class="step">Speedpost DI (EU)</div>
+    h+=`<div class="card"><div class="flexhead"><div><div class="step">Part 2 · Speedpost</div>
         <h3>${r.sp.length} line(s) from the Speedpost sheet</h3>
         <p class="sub">No dockets for Speedpost — country and weight come from the invoice sheet; the weight is rounded up to the next band on the card.</p></div></div>
       <div class="metrics">
@@ -1625,38 +1703,6 @@ function renderDocketResults(id){
       <td class="num">${o.expected.toFixed(2)}</td><td class="num">${o.sgl.toFixed(2)}</td></tr>`; });
     h+=`</tbody></table></div>${r.sp.length>200?`<p class="muted">Showing 200 of ${r.sp.length} — the downloads have them all.</p>`:""}</div>`;
   }
-  h+=`<div class="card" style="border-color:var(--accent2)"><div class="flexhead">
-    <div><div class="step">Output 1 · Reconciliation with vendor</div><h3>Is Linscomm's billing correct?</h3></div>
-    <button class="ghost" onclick="downloadDocketRecon('${id}')">⭳ Download reconciliation</button></div>
-    <div class="metrics">
-    <div class="metric accent"><div class="lbl">Dockets billed</div><div class="val">${r.invDockets}</div></div>
-    <div class="metric"><div class="lbl">Matched lines</div><div class="val">${r.rows.length}</div></div>
-    <div class="metric"><div class="lbl">Articles</div><div class="val">${r.qtyTot}</div></div>
-    <div class="metric"><div class="lbl">Weight (kg)</div><div class="val" style="font-size:19px">${r.wtTot}</div></div>
-    <div class="metric"><div class="lbl">Linscomm billed</div><div class="val" style="font-size:19px">${money(r.billed)}</div></div>
-    <div class="metric"><div class="lbl">Rate-expected</div><div class="val" style="font-size:19px">${money(r.exp)}</div></div>
-    <div class="metric"><div class="lbl">Variance</div><div class="val" style="font-size:19px">${money(r.variance)}</div></div>
-    </div>
-    <div class="banner ${ok?'ok':'warn'}">${ok
-      ?'✓ Linscomm charged the correct ePAC rate (variance '+money(r.variance)+' = rounding).'
-      :'⚠ Rate variance '+money(r.variance)+' across '+r.rows.length+' lines — rows where Diff_Postage ≠ 0 are highlighted red (and in the download).'}</div>`;
-  if(r.notBilled.length) h+=`<div class="banner warn">⚠ ${r.notBilled.length} docket(s) posted but NOT in the Linscomm invoice: ${r.notBilled.slice(0,10).map(esc).join(", ")}${r.notBilled.length>10?'…':''}</div>`;
-  if(r.review.length) h+=`<div class="banner warn">⚠ ${r.review.length} line(s) couldn't be matched/coded (listed in the reconciliation download).</div>`;
-  h+=`</div>`;
-  h+=`<div class="card"><div class="flexhead"><div><div class="step">Output 2 · Billing to customer</div><h3>Singpost billing to SG Link</h3></div>
-    <button class="ghost" onclick="downloadDocketSGL('${id}')">⭳ Download SG Link billing</button></div>
-    <div class="metrics">
-    <div class="metric accent"><div class="lbl">SG Link billing</div><div class="val">${money(r.sglTot)}</div></div>
-    <div class="metric good"><div class="lbl">Margin over Linscomm (S$)</div><div class="val">${money(r.margin)}</div></div>
-    <div class="metric good"><div class="lbl">Margin over Linscomm (%)</div><div class="val">${gpPct.toFixed(1)}%</div></div></div>`;
-  h+=`<div class="tbl-scroll" style="margin-top:12px"><table><thead><tr><th>Docket</th><th>Country</th><th>Code</th>
-    <th class="num">Wt</th><th class="num">Qty</th><th class="num">Linscomm billed</th><th class="num">Expected</th><th class="num">Diff_Postage</th><th class="num">SG Link</th></tr></thead><tbody>`;
-  r.rows.slice(0,200).forEach(o=>{ const nz=Math.abs(o.diff)>0.005; h+=`<tr${nz?' class="gpneg" title="Diff_Postage ≠ 0"':''}><td>${esc(o.docket)}</td><td>${esc(o.country)}</td><td>${esc(o.code)}</td>
-    <td class="num">${o.weight}</td><td class="num">${o.qty}</td><td class="num">${o.billed.toFixed(2)}</td>
-    <td class="num">${o.expected.toFixed(2)}</td><td class="num">${o.diff.toFixed(2)}</td><td class="num">${o.sgl!=null?o.sgl.toFixed(2):"—"}</td></tr>`; });
-  h+=`</tbody></table></div>`;
-  if(r.rows.length>200) h+=`<p class="muted">Showing 200 of ${r.rows.length} — the downloads have them all.</p>`;
-  h+=`</div>`;
   el.innerHTML=h; el.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 async function downloadDocketRecon(id){
@@ -1666,8 +1712,21 @@ async function downloadDocketRecon(id){
   const u8=await xlsxHighlightNonZero(arr,3,sqref);
   saveU8(new Uint8Array(u8),"Reconciliation Linscomm Singpost_"+todayISO()+".xlsx");
 }
+function docketIssues(r){
+  const out=[];
+  if(r.notBilled&&r.notBilled.length) out.push(r.notBilled.length+" docket(s) posted but NOT billed by Linscomm");
+  if(r.invOnly&&r.invOnly.length) out.push(r.invOnly.length+" docket(s) billed with no docket uploaded");
+  if(r.discrepancies&&r.discrepancies.length) out.push(r.discrepancies.length+" docket(s) where quantity/weight differs");
+  if(r.review&&r.review.length) out.push(r.review.length+" line(s) that could not be matched or coded");
+  if(Math.abs(r.variance)>=1) out.push("ePAC rate variance of "+money(r.variance));
+  if(r.sp&&r.sp.length&&Math.abs(r.spVariance)>=1) out.push("Speedpost rate variance of "+money(r.spVariance));
+  return out;
+}
 async function downloadDocketSGL(id){
   const r=state[id].result; if(!r) return;
+  const issues=docketIssues(r);
+  if(issues.length && !confirm("⚠ The reconciliation does NOT match:\n\n• "+issues.join("\n• ")
+      +"\n\nThis billing file would be sent to SG Link with those problems unresolved.\n\nDownload it anyway?")) return;
   const {wb,styleRefs}=buildDocketSGLWB(r,state[id]);
   const u8=XLSX.write(wb,{type:"array",bookType:"xlsx"});
   saveU8(await xlsxStyleCells(u8,styleRefs),"Singpost Postage Billing_SGL_"+todayISO()+".xlsx");
