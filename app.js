@@ -653,7 +653,7 @@ const SERVICES = [
 },
 /* ---------------- Singpost Postage ---------------- */
 {
-  id:"sp_post", name:"Singpost Postage", group:"Rate-card", tags:["Recon","Billing","GP"], status:"ready",
+  id:"sp_post", name:"Singpost Postage", group:"Rate-card", tags:["Recon","Billing","GP","PDF"], status:"ready", docketTab:true,
   description:"Reconcile Linscomm's billing (did they charge the correct ePAC rate?) and bill SG Link. Upload the Linscomm billing export: Date, Docket No, Mode, Schm, Weight, Quantity, Rate, Postage S$, Country. Two rate cards below: Linscomm (cost) and SG Link (sell).",
   rateCards:[
     {id:"lins", label:"Rate from Linscomm (cost)", keyCol:"code", cols:SP_CARD_COLS, rows:SP_LINS_CARD},
@@ -1299,15 +1299,17 @@ const SP_DOCKET_SVC = {
     {id:"sgl",label:"Rate to SG Link (customer)",keyCol:"code",cols:SP_CARD_COLS,rows:SP_SGL_CARD}
   ]
 };
-SERVICES.push(SP_DOCKET_SVC); SVC[SP_DOCKET_SVC.id]=SP_DOCKET_SVC;
+SVC[SP_DOCKET_SVC.id]=SP_DOCKET_SVC;   /* merged into Singpost Postage as its "Dockets" tab — not a separate service */
 
 /* ---- custom view ---- */
-function renderDocketService(v, svc){
-  setTitle(svc.name, "Service");
+function renderDocketService(v, svc, opts){
+  const bodyOnly=!!(opts&&opts.bodyOnly);
+  if(!bodyOnly) setTitle(svc.name, "Service");
   if(!state[svc.id]) state[svc.id]={rateCards:getRateCards(svc), docketFiles:[], docketLines:[], invoiceName:null, invoiceLines:[], result:null};
   const st=state[svc.id];
-  const tab=svcTab[svc.id]||'billing';
-  let h=svcTabsHtml(svc,tab,'📄 Reconcile &amp; bill');
+  if(bodyOnly){ const host=ensureServiceState(SVC["sp_post"]); st.rateCards=host.rateCards; }   /* one set of rate cards for the merged service */
+  const tab=bodyOnly?'billing':(svcTab[svc.id]||'billing');
+  let h=bodyOnly?"":svcTabsHtml(svc,tab,'📄 Reconcile &amp; bill');
   if(tab==='howto'){ h+=`<div class="banner info" style="margin-top:0">${esc(svc.description)}</div>`; v.innerHTML=h; return; }
   if(tab==='rates'){
   svc.rateCards.forEach(c=>{
@@ -3512,6 +3514,7 @@ function svcTabsHtml(svc,tab,billLabel){
     <div class="tab ${tab==='billing'?'active':''}" onclick="setSvcTab('${svc.id}','billing')">${billLabel||'📄 Billing'}</div>
     <div class="tab ${tab==='rates'?'active':''}" onclick="setSvcTab('${svc.id}','rates')">▤ Rate card${svc.rateCards&&svc.rateCards.length>1?'s':''}${svc.settings?' &amp; settings':''}</div>
     ${svc.costCards?`<div class="tab ${tab==='cost'?'active':''}" onclick="setSvcTab('${svc.id}','cost')">💲 FedEx cost</div>`:''}
+    ${svc.docketTab?`<div class="tab ${tab==='dockets'?'active':''}" onclick="setSvcTab('${svc.id}','dockets')">📑 Posting dockets (PDF)</div>`:''}
     ${(svc.description||svc.howTo)?`<div class="tab ${tab==='howto'?'active':''}" onclick="setSvcTab('${svc.id}','howto')">📖 How it's calculated</div>`:''}
   </div>`;
 }
@@ -3824,6 +3827,11 @@ function renderService(v, svc){
 
   let h=svcTabsHtml(svc,tab);
 
+  if(tab==='dockets'&&svc.docketTab){
+    v.innerHTML=h+`<div class="banner info" style="margin-top:0">Reconcile against the <b>SingPost posting dockets</b> (PDF) instead of the Linscomm export. Same rate cards as the tab above.</div><div id="docketwrap_${svc.id}"></div>`;
+    renderDocketService(document.getElementById("docketwrap_"+svc.id), SVC["sp_dockets"], {bodyOnly:true});
+    return;
+  }
   if(tab==='cost'&&svc.costCards){ h+=fedexCostTabHtml(); v.innerHTML=h; return; }
 
   if(tab==='howto'){ h+=`<div class="banner info" style="margin-top:0">${esc(svc.description)}</div>`; if(svc.howTo) h+=fedexHowToHtml(); v.innerHTML=h; return; }
