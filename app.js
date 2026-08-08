@@ -1414,12 +1414,31 @@ async function ingestDockets(id,files){
   for(const f of files){
     status.textContent="Parsing "+f.name+" ("+(done+1)+"/"+files.length+")…";
     try{ const buf=await f.arrayBuffer(); const lines=await parseDocketPDF(buf,f.name);
-      st.docketFiles.push({name:f.name,lines:lines.length}); st.docketLines.push(...lines);
-    }catch(e){ st.docketFiles.push({name:f.name,lines:0,err:String(e)}); }
+      const k=(st._dkSeq=(st._dkSeq||0)+1);                       /* so this file can be removed again later */
+      lines.forEach(l=>{ l._fk=k; });
+      st.docketFiles.push({name:f.name,lines:lines.length,k}); st.docketLines.push(...lines);
+    }catch(e){ st.docketFiles.push({name:f.name,lines:0,err:String(e),k:(st._dkSeq=(st._dkSeq||0)+1)}); }
     done++;
   }
   status.textContent=st.docketLines.length+" docket lines parsed from "+st.docketFiles.length+" file(s).";
   renderDocketPills(id);
+  if(st.result) runDocketReconUI(id);                             /* added dockets → recalculate */
+}
+function removeDocketFile(id,k){
+  const st=state[id]; const i=(st.docketFiles||[]).findIndex(f=>f.k===k); if(i<0) return;
+  const f=st.docketFiles[i];
+  if(!confirm("Remove “"+f.name+"” ("+f.lines+" docket line(s)) from this run?")) return;
+  st.docketFiles.splice(i,1);
+  st.docketLines=st.docketLines.filter(l=>l._fk!==k);
+  renderDocketPills(id);
+  if(st.result) runDocketReconUI(id);
+}
+function removeDocketNo(id,dk){
+  const st=state[id]; const n=st.docketLines.filter(l=>String(l.docket)===String(dk)).length;
+  if(!confirm("Exclude docket "+dk+" ("+n+" line(s)) from this run?\n\nRe-upload its PDF to bring it back.")) return;
+  st.docketLines=st.docketLines.filter(l=>String(l.docket)!==String(dk));
+  renderDocketPills(id);
+  if(st.result) runDocketReconUI(id);
 }
 function ingestInvoice(id,file){
   const st=state[id]; const rd=new FileReader();
@@ -1438,13 +1457,17 @@ function ingestInvoice(id,file){
 function renderDocketPills(id){
   const st=state[id];
   const dp=document.getElementById("dockpills_"+id);
-  if(dp) dp.innerHTML=(st.docketFiles||[]).map(f=>`<span class="pill">📄 ${esc(f.name)} <span class="muted">(${f.lines})</span></span>`).join("")
-    + (st.docketFiles&&st.docketFiles.length?` <button class="subtle sm" onclick="clearDockets('${id}')">Clear</button>`:"");
+  if(dp) dp.innerHTML=(st.docketFiles||[]).map(f=>`<span class="pill">📄 ${esc(f.name)} <span class="muted">(${f.lines})</span> <span class="x" title="Remove this file" onclick="removeDocketFile('${id}',${f.k})">✕</span></span>`).join("")
+    + (st.docketFiles&&st.docketFiles.length?` <button class="subtle sm" onclick="clearDockets('${id}')">Clear all</button>
+      <span class="muted" style="margin-left:8px">Drop more PDFs any time — the reconciliation recalculates.</span>`:"");
   const ip=document.getElementById("invpill_"+id);
   if(ip) ip.innerHTML=st.invoiceName?`<span class="pill">📄 ${esc(st.invoiceName)} <span class="muted">(ePAC ${st.invoiceLines.length} lines${(st.spostLines&&st.spostLines.length)?` · Speedpost ${st.spostLines.length} lines`:""})</span></span>`:"";
 }
-function clearDockets(id){ state[id].docketFiles=[]; state[id].docketLines=[]; renderDocketPills(id);
-  const s=document.getElementById("dockstatus_"+id); if(s) s.textContent=""; }
+function clearDockets(id){ const st=state[id];
+  if(!confirm("Remove ALL "+(st.docketFiles||[]).length+" docket file(s) from this run?")) return;
+  st.docketFiles=[]; st.docketLines=[]; renderDocketPills(id);
+  const s=document.getElementById("dockstatus_"+id); if(s) s.textContent="";
+  if(st.result) st.result=null, document.getElementById("dockresults_"+id).innerHTML=""; }
 function runDocketReconUI(id){
   const st=state[id];
   if(!st.invoiceLines.length && !(st.spostLines&&st.spostLines.length)){ alert("Upload the Linscomm invoice (Excel) first."); return; }
@@ -1647,6 +1670,15 @@ function renderDocketResults(id){
       <div class="metric ${(r.invOnly||[]).length?'warn':''}"><div class="lbl">Billed, no docket</div><div class="val">${(r.invOnly||[]).length}</div></div>
       <div class="metric ${r.discrepancies.length?'warn':''}"><div class="lbl">Qty/weight differs</div><div class="val">${r.discrepancies.length}</div></div>
     </div>`;
+  {                                             /* every docket in this run — remove one and it recalculates */
+    const cnt={}; (state[id].docketLines||[]).forEach(l=>{ const k=String(l.docket||"—"); cnt[k]=(cnt[k]||0)+1; });
+    const dks=Object.keys(cnt).sort();
+    if(dks.length) h+=`<p class="sub" style="margin-bottom:6px">Dockets in this run — click ✕ to exclude one and recalculate:</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${dks.map(dk=>{
+        const bad=(r.notBilled||[]).indexOf(dk)>=0;
+        return `<span class="pill"${bad?' style="border-color:var(--warn);background:var(--warn-bg)"':''}>${esc(dk)} <span class="muted">(${cnt[dk]})</span> <span class="x" title="Exclude this docket" onclick="removeDocketNo('${id}','${esc(dk)}')">✕</span></span>`;
+      }).join("")}</div>`;
+  }
   if(r.notBilled.length) h+=`<div class="banner warn">⚠ <b>${r.notBilled.length}</b> docket(s) posted but NOT in the Linscomm invoice: ${r.notBilled.slice(0,10).map(esc).join(", ")}${r.notBilled.length>10?'…':''}</div>`;
   if((r.invOnly||[]).length) h+=`<div class="banner warn">⚠ <b>${r.invOnly.length}</b> docket(s) billed by Linscomm with no docket PDF uploaded: ${r.invOnly.slice(0,10).map(esc).join(", ")}${r.invOnly.length>10?'…':''}</div>`;
   h+=`</div>`;
