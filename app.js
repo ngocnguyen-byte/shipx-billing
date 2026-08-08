@@ -1679,6 +1679,8 @@ function renderDocketResults(id){
         return `<span class="pill"${bad?' style="border-color:var(--warn);background:var(--warn-bg)"':''}>${esc(dk)} <span class="muted">(${cnt[dk]})</span> <span class="x" title="Exclude this docket" onclick="removeDocketNo('${id}','${esc(dk)}')">✕</span></span>`;
       }).join("")}</div>`;
   }
+  if(r.rows.length && r.billed>0 && r.exp===0) h+=`<div class="banner err">⚠ <b>The ePAC cost card produced no rates</b> — every line came out at 0.00, so the variance below is meaningless.<br>
+    Open <b>▤ Rate cards → ePAC — cost from Linscomm</b> and check the <b>Item S$</b> / <b>Kg S$</b> columns. If they are empty, click <b>Reset</b> on that card to restore the built-in rates, or load the correct rate file.</div>`;
   if(r.notBilled.length) h+=`<div class="banner warn">⚠ <b>${r.notBilled.length}</b> docket(s) posted but NOT in the Linscomm invoice: ${r.notBilled.slice(0,10).map(esc).join(", ")}${r.notBilled.length>10?'…':''}</div>`;
   if((r.invOnly||[]).length) h+=`<div class="banner warn">⚠ <b>${r.invOnly.length}</b> docket(s) billed by Linscomm with no docket PDF uploaded: ${r.invOnly.slice(0,10).map(esc).join(", ")}${r.invOnly.length>10?'…':''}</div>`;
   h+=`</div>`;
@@ -1824,11 +1826,18 @@ function ameRemoveCustomer(a){
   if(state["ame"]&&state["ame"].rateCards) delete state["ame"].rateCards[a];
   ameSyncCards(); render();
 }
+function cardHasNumbers(rows,cols){                 /* a saved card whose rate columns are all blank/0 is unusable */
+  const nums=(cols||[]).filter(c=>c.num);
+  if(!nums.length) return true;
+  return (rows||[]).some(r=>nums.some(c=>{ const v=num(r[c.key]); return v!=null && v!==0; }));
+}
 function getRateCards(svc){
   if(!svc.rateCards) return null;
   const o={};
   svc.rateCards.forEach(c=>{ const saved=loadSavedRates(svc.id+":"+c.id);
-    o[c.id]={rows:(validSavedRows(saved,c.keyCol)?saved:c.rows).map(r=>({...r}))}; });
+    const ok=validSavedRows(saved,c.keyCol)&&cardHasNumbers(saved,c.cols);
+    if(validSavedRows(saved,c.keyCol)&&!ok) console.warn("Saved rate card "+svc.id+":"+c.id+" has no rates — using the built-in card instead.");
+    o[c.id]={rows:(ok?saved:c.rows).map(r=>({...r}))}; });
   return o;
 }
 
@@ -4231,6 +4240,13 @@ function applyRateFileN(id,cardId,rows){
   const found=rateColIdx(rows,c.cols,c.keyCol);
   if(!found){ alert("Could not find the "+c.cols.map(x=>x.label).join(" / ")+" columns in that file.\n\nHeadings found: "+rateHdrList(rows)+"\n\nRename the country column to one of: Country Code / Code / Key / Country, or click ⭳ Download on a card to get the template."); return; }
   const hr=found.hr, colIdx=found.idx;
+  const missNum=c.cols.filter(col=>col.num && !(colIdx[col.key]>=0)).map(col=>col.label);
+  if(missNum.length && missNum.length===c.cols.filter(col=>col.num).length){
+    alert("That file has a "+c.keyCol+" column but none of the rate columns ("+missNum.join(", ")+").\n\nHeadings found: "+rateHdrList(rows)+"\n\nNothing was loaded — the card still has its previous rates.");
+    return;
+  }
+  if(missNum.length && !confirm("These rate column(s) were not found in the file: "+missNum.join(", ")
+      +"\n\nHeadings found: "+rateHdrList(rows)+"\n\nLoad anyway and set them to 0?")) return;
   const nw=[];
   rows.slice(hr+1).forEach(r=>{ if(r[colIdx[c.keyCol]]==null||r[colIdx[c.keyCol]]==="") return;
     const o={}; c.cols.forEach(col=>{ const i=colIdx[col.key]; let v=i>=0?r[i]:(col.num?0:""); o[col.key]=col.num?num(v):v; }); nw.push(o); });
