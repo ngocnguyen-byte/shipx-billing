@@ -1243,12 +1243,12 @@ function parseSpeedpostInvoice(rows){
     ins:find("insprems","insprem","insurance"),admin:find("adminhandling","admin"),
     post:find("deliverys","delivery","postages","postage","amount")};
   const out=[];
-  rows.slice(hr+1).forEach(r=>{
+  rows.slice(hr+1).forEach((r,_i)=>{
     const first=String(r[0]==null?"":r[0]).trim().toLowerCase();
     if(first==="total"||first==="grand total") return;                 /* the sheet ends with a Total row */
     const wt=num(r[ci.weight]); const cc=ci.country>=0?String(r[ci.country]||"").trim():"";
     if(wt==null||!cc) return;
-    out.push({docket:(ci.item>=0?String(r[ci.item]||"").trim():""), item:(ci.item>=0?String(r[ci.item]||"").trim():""),
+    out.push({_row:hr+2+_i, docket:(ci.item>=0?String(r[ci.item]||"").trim():""), item:(ci.item>=0?String(r[ci.item]||"").trim():""),
       date:ci.date>=0?r[ci.date]:null, mode:(ci.svc>=0?r[ci.svc]:null), schm:(ci.zone>=0?r[ci.zone]:null),
       country:cc, zone:(ci.zone>=0?r[ci.zone]:null), weight:wt, qty:1,
       ins:ci.ins>=0?num(r[ci.ins]):null, admin:ci.admin>=0?num(r[ci.admin]):null,
@@ -1266,8 +1266,9 @@ function parseLinscommInvoice(rows){
     weight:find("weightkg","weight"),qty:find("quantity","qty"),rate:find("rate"),post:find("postages$","postage"),
     country:find("country","destination","dest")};
   const out=[];
-  rows.slice(hr+1).forEach(r=>{ const dk=r[ci.docket]; const wt=num(r[ci.weight]); const q=num(r[ci.qty]); const p=num(r[ci.post]);
-    if(dk && wt!=null && q!=null) out.push({docket:String(dk).trim(),
+  rows.slice(hr+1).forEach((r,_i)=>{ const dk=r[ci.docket]; const wt=num(r[ci.weight]); const q=num(r[ci.qty]); const p=num(r[ci.post]);
+    if(dk && wt!=null && q!=null) out.push({_row:hr+2+_i,                       /* row number in the sheet you uploaded */
+      docket:String(dk).trim(),
       date:ci.date>=0?r[ci.date]:null, mode:ci.mode>=0?r[ci.mode]:null, schm:ci.schm>=0?r[ci.schm]:null,
       weight:wt, qty:Math.round(q), country:(ci.country>=0?r[ci.country]:null), rate:ci.rate>=0?r[ci.rate]:null, postage:p!=null?p:0}); });
   return out;
@@ -1286,11 +1287,11 @@ function docketReconcile(st){
     const cands=byDocket[l.docket]||[];
     let hit=cands.find(c=>!c._used && c.qty===l.qty && Math.abs(c.weight-l.weight)<=0.011)
           || cands.find(c=>!c._used && c.qty===l.qty);
-    if(!hit){ review.push({docket:l.docket,qty:l.qty,weight:l.weight,reason:invSet.has(l.docket)&&!dockSet.has(l.docket)?"Docket not in uploaded PDFs":"No matching docket line (qty/weight)"}); return; }
+    if(!hit){ review.push({row:l._row,docket:l.docket,qty:l.qty,weight:l.weight,reason:invSet.has(l.docket)&&!dockSet.has(l.docket)?"Docket not in uploaded PDFs":"No matching docket line (qty/weight)"}); return; }
     hit._used=true;
     const country=hit.country, code=spCodeFor(country);
     const lc=code?lins[norm(code)]:null, sc=code?sgl[norm(code)]:null;
-    if(!lc){ review.push({docket:l.docket,qty:l.qty,weight:l.weight,country,reason:"Country not in rate card: "+country+(code?" ("+code+")":" (no code)")}); return; }
+    if(!lc){ review.push({row:l._row,docket:l.docket,qty:l.qty,weight:l.weight,country,reason:"Country not in rate card: "+country+(code?" ("+code+")":" (no code)")}); return; }
     const expPost=round2((lc.item||0)*l.qty+(lc.kg||0)*l.weight);
     const sgPost=sc?round2((sc.item||0)*l.qty+(sc.kg||0)*l.weight):null;
     billed+=l.postage; exp+=expPost; if(sgPost!=null) sglTot+=sgPost; qtyTot+=l.qty; wtTot+=l.weight;
@@ -1312,7 +1313,11 @@ function docketReconcile(st){
     if(dq!==iq || Math.abs(dw-iw)>0.011){
       const expDock=round2(dls.reduce((s,x)=>{ const code=spCodeFor(x.country); const lc=code?lins[norm(code)]:null; return s+(lc?((lc.item||0)*x.qty+(lc.kg||0)*x.weight):0); },0));
       const ib=round2(ils.reduce((s,x)=>s+num(x.postage),0));
-      discrepancies.push({docket:dk,country:(dls[0]&&dls[0].country)||"",dq,dw,iq,iw,qtyDiff:iq-dq,billImpact:round2(ib-expDock)});
+      const invRows=ils.map(x=>x._row).filter(x=>x!=null);
+      discrepancies.push({docket:dk,country:(dls[0]&&dls[0].country)||"",dq,dw,iq,iw,qtyDiff:iq-dq,billImpact:round2(ib-expDock),
+        rows:invRows, rowsTxt:!invRows.length?"":(invRows.length>8
+          ? ("rows "+Math.min.apply(null,invRows)+"–"+Math.max.apply(null,invRows)+" ("+invRows.length+" lines)")
+          : invRows.join(", "))});
     }
   });
   /* ---- Speedpost: no dockets — every line comes from the Speedpost sheet of the invoice ---- */
@@ -1321,7 +1326,7 @@ function docketReconcile(st){
   (st.spostLines||[]).forEach(l=>{
     const cc=String(l.country||"").trim().toUpperCase();
     const cr=sp2Rate(c2,cc,l.weight), sr=sp2Rate(s2,cc,l.weight);
-    if(!cr||!sr){ review.push({docket:l.docket,qty:l.qty,weight:l.weight,country:l.country,service:"Speedpost",
+    if(!cr||!sr){ review.push({row:l._row,docket:l.docket,qty:l.qty,weight:l.weight,country:l.country,service:"Speedpost",
       reason:!cc?"Speedpost line has no country":((c2.length&&num(l.weight)>num(c2[c2.length-1].w))?("Weight "+l.weight+"kg is above the Speedpost card (max "+c2[c2.length-1].w+"kg)"):("Speedpost card has no rate for "+cc+" @ "+l.weight+"kg")) }); return; }
     const bl=num(l.postage);
     spBilled+=bl||0; spExp+=cr.rate; spSgl+=sr.rate; spQty+=l.qty||0; spWt+=num(l.weight)||0;
@@ -1509,11 +1514,11 @@ function buildDocketReconWB(r,st){
     ["Docket No","Docket Date","Lines","Qty","Weight kg","Expected Linscomm S$","Expected SG Link S$"]];
   (r.notBilledDetail||[]).forEach(d=>dsc.push([d.docket,"",d.lines,d.qty,d.weight,m2(d.expLins),m2(d.expSGL)]));
   dsc.push([]); dsc.push(["2) Quantity / weight discrepancies (Linscomm billed vs docket):"]);
-  dsc.push(["Docket No","Country","Docket Qty","Docket Wt","Linscomm Qty","Linscomm Wt","Qty Diff","Bill Impact S$"]);
-  (r.discrepancies||[]).forEach(d=>dsc.push([d.docket,d.country,d.dq,d.dw,d.iq,d.iw,d.qtyDiff,m2(d.billImpact)]));
+  dsc.push(["Docket No","Country","Docket Qty","Docket Wt","Linscomm Qty","Linscomm Wt","Qty Diff","Bill Impact S$","Row(s) in your Linscomm invoice"]);
+  (r.discrepancies||[]).forEach(d=>dsc.push([d.docket,d.country,d.dq,d.dw,d.iq,d.iw,d.qtyDiff,m2(d.billImpact),d.rowsTxt||""]));
   if(r.review.length){ dsc.push([]); dsc.push(["3) Lines needing review (not billed in outputs):"]);
-    dsc.push(["Docket","Qty","Weight","Country","Reason"]);
-    r.review.forEach(x=>dsc.push([x.docket,x.qty,x.weight,x.country||"",x.reason])); }
+    dsc.push(["Invoice row","Docket","Qty","Weight","Country","Service","Reason"]);
+    r.review.forEach(x=>dsc.push([x.row==null?"":x.row,x.docket,x.qty,x.weight,x.country||"",x.service||"ePAC",x.reason])); }
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(dsc),"Discrepancies");
   const S=(col,v)=>fcell("SUM("+col+"3:"+col+lastR+")",v);
   const hdr=["Date\nOrdinary","Docket No","Mode","Schm","Weight (Kg)","Quantity","Rate","Postage S$","Country","Country Code (2 letters)","Postage - From Linscomm","Diff_Postage","Linscomm Postage + 5%","Postage to SG Link","Compare SGL Rate & 5% Linscomm"];
