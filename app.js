@@ -1229,6 +1229,33 @@ async function parseDocketPDF(buf, filename){
   return out;
 }
 /* parse Linscomm invoice xlsx (already read to workbook rows) -> [{docket,weight,qty,postage}] */
+function parseSpeedpostInvoice(rows){
+  /* SingPost Speedpost sheet: Date | Item No | Svc | Cty | Zone | Weight(Kg) | Ins Prem S$ | Admin & Handling | Delivery S$ */
+  let hr=-1;
+  for(let i=0;i<Math.min(rows.length,12);i++){ const h=rows[i].map(x=>norm(x));
+    if(h.some(c=>c.indexOf("weight")>=0) && h.some(c=>c==="cty"||c.indexOf("country")>=0)){ hr=i; break; } }
+  if(hr<0) return [];
+  const H=rows[hr].map(x=>norm(x));
+  const find=(...keys)=>{ for(const k of keys){ const i=H.findIndex(c=>c===k); if(i>=0) return i; }
+                          for(const k of keys){ const i=H.findIndex(c=>c.indexOf(k)>=0); if(i>=0) return i; } return -1; };
+  const ci={date:find("date"),item:find("itemno","item","trackingnumber"),svc:find("svc","service"),
+    country:find("cty","country","destination"),zone:find("zone"),weight:find("weightkg","weight"),
+    ins:find("insprems","insprem","insurance"),admin:find("adminhandling","admin"),
+    post:find("deliverys","delivery","postages","postage","amount")};
+  const out=[];
+  rows.slice(hr+1).forEach(r=>{
+    const first=String(r[0]==null?"":r[0]).trim().toLowerCase();
+    if(first==="total"||first==="grand total") return;                 /* the sheet ends with a Total row */
+    const wt=num(r[ci.weight]); const cc=ci.country>=0?String(r[ci.country]||"").trim():"";
+    if(wt==null||!cc) return;
+    out.push({docket:(ci.item>=0?String(r[ci.item]||"").trim():""), item:(ci.item>=0?String(r[ci.item]||"").trim():""),
+      date:ci.date>=0?r[ci.date]:null, mode:(ci.svc>=0?r[ci.svc]:null), schm:(ci.zone>=0?r[ci.zone]:null),
+      country:cc, zone:(ci.zone>=0?r[ci.zone]:null), weight:wt, qty:1,
+      ins:ci.ins>=0?num(r[ci.ins]):null, admin:ci.admin>=0?num(r[ci.admin]):null,
+      postage:ci.post>=0?num(r[ci.post]):null});
+  });
+  return out;
+}
 function parseLinscommInvoice(rows){
   let hr=-1;
   for(let i=0;i<Math.min(rows.length,10);i++){ const h=rows[i].map(x=>norm(x)); if(h.some(c=>c.indexOf("docket")>=0)&&h.some(c=>c.indexOf("postage")>=0)){ hr=i; break; } }
@@ -1402,7 +1429,7 @@ function ingestInvoice(id,file){
     if(!epacRows&&!spostRows) epacRows=sheetRows(wb.Sheets[wb.SheetNames[0]]);
     st.invoiceName=file.name;
     st.invoiceLines=epacRows?parseLinscommInvoice(epacRows):[];
-    st.spostLines=spostRows?parseLinscommInvoice(spostRows):[];   /* Speedpost has no dockets — priced from this sheet */
+    st.spostLines=spostRows?parseSpeedpostInvoice(spostRows):[];   /* Speedpost has no dockets — priced from this sheet */
     renderDocketPills(id); };
   rd.readAsArrayBuffer(file);
 }
