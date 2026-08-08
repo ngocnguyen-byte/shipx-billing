@@ -1236,12 +1236,13 @@ function parseLinscommInvoice(rows){
   const H=rows[hr].map(x=>norm(x));
   const find=(...keys)=>{ for(const k of keys){ const i=H.findIndex(c=>c===k); if(i>=0) return i; } for(const k of keys){ const i=H.findIndex(c=>c.indexOf(k)>=0); if(i>=0) return i; } return -1; };
   const ci={docket:find("docketno","docket"),date:find("date"),mode:find("mode"),schm:find("schm","scheme"),
-    weight:find("weightkg","weight"),qty:find("quantity","qty"),rate:find("rate"),post:find("postages$","postage")};
+    weight:find("weightkg","weight"),qty:find("quantity","qty"),rate:find("rate"),post:find("postages$","postage"),
+    country:find("country","destination","dest")};
   const out=[];
   rows.slice(hr+1).forEach(r=>{ const dk=r[ci.docket]; const wt=num(r[ci.weight]); const q=num(r[ci.qty]); const p=num(r[ci.post]);
     if(dk && wt!=null && q!=null) out.push({docket:String(dk).trim(),
       date:ci.date>=0?r[ci.date]:null, mode:ci.mode>=0?r[ci.mode]:null, schm:ci.schm>=0?r[ci.schm]:null,
-      weight:wt, qty:Math.round(q), rate:ci.rate>=0?r[ci.rate]:null, postage:p!=null?p:0}); });
+      weight:wt, qty:Math.round(q), country:(ci.country>=0?r[ci.country]:null), rate:ci.rate>=0?r[ci.rate]:null, postage:p!=null?p:0}); });
   return out;
 }
 /* the reconciliation engine */
@@ -1285,9 +1286,24 @@ function docketReconcile(st){
       discrepancies.push({docket:dk,country:(dls[0]&&dls[0].country)||"",dq,dw,iq,iw,qtyDiff:iq-dq,billImpact:round2(ib-expDock)});
     }
   });
+  /* ---- Speedpost: no dockets — every line comes from the Speedpost sheet of the invoice ---- */
+  const c2=(st.rateCards.sp2cost||{rows:[]}).rows, s2=(st.rateCards.sp2sgl||{rows:[]}).rows;
+  const sp=[]; let spBilled=0,spExp=0,spSgl=0,spQty=0,spWt=0;
+  (st.spostLines||[]).forEach(l=>{
+    const cc=String(l.country||"").trim().toUpperCase();
+    const cr=sp2Rate(c2,cc,l.weight), sr=sp2Rate(s2,cc,l.weight);
+    if(!cr||!sr){ review.push({docket:l.docket,qty:l.qty,weight:l.weight,country:l.country,service:"Speedpost",
+      reason:!cc?"Speedpost line has no country":((c2.length&&num(l.weight)>num(c2[c2.length-1].w))?("Weight "+l.weight+"kg is above the Speedpost card (max "+c2[c2.length-1].w+"kg)"):("Speedpost card has no rate for "+cc+" @ "+l.weight+"kg")) }); return; }
+    const bl=num(l.postage);
+    spBilled+=bl||0; spExp+=cr.rate; spSgl+=sr.rate; spQty+=l.qty||0; spWt+=num(l.weight)||0;
+    sp.push({docket:l.docket,date:l.date,mode:l.mode,schm:l.schm,country:l.country,code:cc,weight:l.weight,band:cr.band,
+      qty:l.qty,billed:bl!=null?round2(bl):null,expected:cr.rate,sgl:sr.rate,diff:bl!=null?round2(bl-cr.rate):null});
+  });
   const variance=round2(billed-exp), margin=round2(sglTot-billed);
   return {rows,review,billed:round2(billed),exp:round2(exp),variance,sglTot:round2(sglTot),margin,
-    qtyTot,wtTot:round2(wtTot),notBilled,notBilledDetail,discrepancies,dockets:dockSet.size,invDockets:invSet.size};
+    qtyTot,wtTot:round2(wtTot),notBilled,notBilledDetail,discrepancies,dockets:dockSet.size,invDockets:invSet.size,
+    sp, spBilled:round2(spBilled), spExp:round2(spExp), spVariance:round2(spBilled-spExp),
+    spSgl:round2(spSgl), spMargin:round2(spSgl-spBilled), spQty:spQty, spWt:round2(spWt)};
 }
 
 /* ---- service registration ---- */
@@ -1329,7 +1345,8 @@ function renderDocketService(v, svc, opts){
     </div>
     <div id="dockpills_${svc.id}" style="margin-top:10px"></div></div>`;
   h+=`<div class="card"><div class="step">Step 2 · Linscomm invoice</div><h3>Upload Linscomm billing (Excel)</h3>
-    <p class="sub">The invoice with Date, Docket No, Weight, Quantity, Postage S$.</p>
+    <p class="sub">The invoice with Date, Docket No, Weight, Quantity, Postage S$ — plus <b>Country</b> on the Speedpost sheet.<br>
+      <span class="muted">If the file has a sheet named <b>Speedpost</b>, those lines are billed straight from it (no dockets) using the Speedpost weight × country card.</span></p>
     <div class="drop" id="invdrop_${svc.id}"><p style="margin:0"><b>Drop the Linscomm invoice (.xlsx)</b> or click</p></div>
     <div id="invpill_${svc.id}" style="margin-top:10px"></div></div>`;
   h+=`<div class="card"><div class="step">Step 3 · Reconcile</div>
@@ -1378,8 +1395,15 @@ async function ingestDockets(id,files){
 function ingestInvoice(id,file){
   const st=state[id]; const rd=new FileReader();
   rd.onload=ev=>{ const wb=XLSX.read(ev.target.result,{type:"array",cellDates:true});
-    const rows=sheetRows(wb.Sheets[wb.SheetNames[0]]);
-    st.invoiceName=file.name; st.invoiceLines=parseLinscommInvoice(rows); renderDocketPills(id); };
+    let epacRows=null, spostRows=null;
+    wb.SheetNames.forEach(sn=>{ const n=norm(sn);
+      if(n.indexOf("speedpost")>=0||n.indexOf("spost")>=0){ if(!spostRows) spostRows=sheetRows(wb.Sheets[sn]); }
+      else if(!epacRows) epacRows=sheetRows(wb.Sheets[sn]); });
+    if(!epacRows&&!spostRows) epacRows=sheetRows(wb.Sheets[wb.SheetNames[0]]);
+    st.invoiceName=file.name;
+    st.invoiceLines=epacRows?parseLinscommInvoice(epacRows):[];
+    st.spostLines=spostRows?parseLinscommInvoice(spostRows):[];   /* Speedpost has no dockets — priced from this sheet */
+    renderDocketPills(id); };
   rd.readAsArrayBuffer(file);
 }
 function renderDocketPills(id){
@@ -1388,14 +1412,14 @@ function renderDocketPills(id){
   if(dp) dp.innerHTML=(st.docketFiles||[]).map(f=>`<span class="pill">📄 ${esc(f.name)} <span class="muted">(${f.lines})</span></span>`).join("")
     + (st.docketFiles&&st.docketFiles.length?` <button class="subtle sm" onclick="clearDockets('${id}')">Clear</button>`:"");
   const ip=document.getElementById("invpill_"+id);
-  if(ip) ip.innerHTML=st.invoiceName?`<span class="pill">📄 ${esc(st.invoiceName)} <span class="muted">(${st.invoiceLines.length} lines)</span></span>`:"";
+  if(ip) ip.innerHTML=st.invoiceName?`<span class="pill">📄 ${esc(st.invoiceName)} <span class="muted">(ePAC ${st.invoiceLines.length} lines${(st.spostLines&&st.spostLines.length)?` · Speedpost ${st.spostLines.length} lines`:""})</span></span>`:"";
 }
 function clearDockets(id){ state[id].docketFiles=[]; state[id].docketLines=[]; renderDocketPills(id);
   const s=document.getElementById("dockstatus_"+id); if(s) s.textContent=""; }
 function runDocketReconUI(id){
   const st=state[id];
-  if(!st.docketLines.length){ alert("Upload docket PDFs first."); return; }
-  if(!st.invoiceLines.length){ alert("Upload the Linscomm invoice (Excel) first."); return; }
+  if(!st.invoiceLines.length && !(st.spostLines&&st.spostLines.length)){ alert("Upload the Linscomm invoice (Excel) first."); return; }
+  if(st.invoiceLines.length && !st.docketLines.length){ alert("Upload the docket PDFs first (they carry the country for the ePAC lines)."); return; }
   st.result=docketReconcile(st);
   renderDocketResults(id);
 }
@@ -1453,7 +1477,15 @@ function buildDocketReconWB(r,st){
       fcell("VLOOKUP(J"+R+",'Rate to SG Link'!$C:$E,2,0)*F"+R+"+VLOOKUP(J"+R+",'Rate to SG Link'!$C:$E,3,0)*E"+R,o.sgl!=null?o.sgl:0),
       fcell("N"+R+"-M"+R,round2((o.sgl||0)-o.billed*1.05))]);
   });
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Billing Output");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"ePAC");
+  if(r.sp&&r.sp.length){                       /* Speedpost — straight from the invoice sheet, no dockets */
+    const M=r.sp.length;
+    const a2=[[null,null,null,null,fcell("SUM(E3:E"+(M+2)+")",r.spWt),fcell("SUM(F3:F"+(M+2)+")",r.spQty,"0"),null,fcell("SUM(H3:H"+(M+2)+")",r.spBilled),null,null,fcell("SUM(K3:K"+(M+2)+")",r.spExp),fcell("SUM(L3:L"+(M+2)+")",round2(r.spBilled-r.spExp))],
+      ["Date\nOrdinary","Docket No","Mode","Schm","Weight (Kg)","Quantity","Rate band (Kg)","Postage S$","Country","Country Code","Postage - From Rate","Diff_Postage"]];
+    r.sp.forEach(o=>a2.push([o.date,o.docket,o.mode||"AIR",o.schm||"SP",num(o.weight),o.qty,o.band,m2(o.billed),o.country,o.code,m2(o.expected),m2(o.diff)]));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a2),"Speedpost");
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_sp2CardAOA(st.rateCards.sp2cost.rows,"SPEEDPOST — COST FROM SINGPOST")),"Speedpost cost card");
+  }
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_spCardAOA(st.rateCards.lins.rows,["RATES FROM LINS COMMUNICATION PTE LTD","(All rates in Singapore Dollar)","WEF 1 January 2026 to 31 December 2026 TRACKED SMALL PACKETS - ePAC","Applicable for Overseas Origin Mail Ex-SIN","Lins Communication"])),"Rate from Linscomm");
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_spCardAOA(st.rateCards.sgl.rows,["SG LINK RATE CARD"])),"Rate to SG Link");
   wb.Workbook={CalcPr:{fullCalcOnLoad:true}};
@@ -1468,10 +1500,20 @@ function buildDocketSGLWB(r,st){
   r.rows.forEach((o,i)=>{ const R=i+3;
     aoa.push([o.date==null?null:o.date,o.docket,o.mode||null,o.schm||null,num(o.weight),o.qty,o.rate||null,o.country,o.code,
       fcell("VLOOKUP(I"+R+",'Rate to SG Link'!$C:$E,2,0)*F"+R+"+VLOOKUP(I"+R+",'Rate to SG Link'!$C:$E,3,0)*E"+R,o.sgl!=null?o.sgl:0)]); });
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Billing");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"ePAC");
+  const styleRefs=[{sheet:1,refs:["J1"]}];
+  if(r.sp&&r.sp.length){
+    const M=r.sp.length;
+    const a2=[[null,null,null,null,fcell("SUM(E3:E"+(M+2)+")",r.spWt),fcell("SUM(F3:F"+(M+2)+")",r.spQty,"0"),null,null,null,fcell("SUM(J3:J"+(M+2)+")",r.spSgl)],
+      ["Date\nOrdinary","Docket No","Mode","Schm","Weight (Kg)","Quantity","Rate band (Kg)","Country","Country Code","Postage to SG Link (SGD)"]];
+    r.sp.forEach(o=>a2.push([o.date,o.docket,o.mode||"AIR",o.schm||"SP",num(o.weight),o.qty,o.band,o.country,o.code,m2(o.sgl)]));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a2),"Speedpost");
+    styleRefs.push({sheet:2,refs:["J1"]});
+  }
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_spCardAOA(st.rateCards.sgl.rows,["SG LINK RATE CARD"])),"Rate to SG Link");
+  if(r.sp&&r.sp.length) XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_sp2CardAOA(st.rateCards.sp2sgl.rows,"SPEEDPOST — RATE TO SG LINK")),"Speedpost rate SGL");
   wb.Workbook={CalcPr:{fullCalcOnLoad:true}};
-  return {wb, styleRefs:[{sheet:1,refs:["J1"]}]};
+  return {wb, styleRefs};
 }
 async function xlsxHighlightNonZero(u8, sheetIndex, sqref){
   if(typeof JSZip==="undefined") return u8;
@@ -1534,7 +1576,29 @@ function renderDocketResults(id){
   if(!el) return;
   const gpPct=r.sglTot?round2(r.margin/r.sglTot*100):0;
   const ok=Math.abs(r.variance)<Math.max(2,r.exp*0.001);
-  let h=`<div class="card" style="border-color:var(--accent2)"><div class="flexhead">
+  let h="";
+  if(r.sp&&r.sp.length){                        /* Speedpost — priced from the invoice sheet, no dockets */
+    const spOk=Math.abs(r.spVariance)<Math.max(2,r.spExp*0.001);
+    h+=`<div class="card"><div class="flexhead"><div><div class="step">Speedpost DI (EU)</div>
+        <h3>${r.sp.length} line(s) from the Speedpost sheet</h3>
+        <p class="sub">No dockets for Speedpost — country and weight come from the invoice sheet; the weight is rounded up to the next band on the card.</p></div></div>
+      <div class="metrics">
+        <div class="metric"><div class="lbl">Articles</div><div class="val">${r.spQty}</div></div>
+        <div class="metric"><div class="lbl">Weight (kg)</div><div class="val" style="font-size:19px">${r.spWt}</div></div>
+        <div class="metric"><div class="lbl">SingPost billed</div><div class="val" style="font-size:19px">${money(r.spBilled)}</div></div>
+        <div class="metric"><div class="lbl">Rate-expected</div><div class="val" style="font-size:19px">${money(r.spExp)}</div></div>
+        <div class="metric ${spOk?"":"warn"}"><div class="lbl">Variance</div><div class="val" style="font-size:19px">${money(r.spVariance)}</div></div>
+        <div class="metric accent"><div class="lbl">Billing to SG Link</div><div class="val" style="font-size:19px">${money(r.spSgl)}</div></div>
+        <div class="metric good"><div class="lbl">Margin</div><div class="val" style="font-size:19px">${money(r.spMargin)}</div></div>
+      </div>
+      <div class="tbl-scroll" style="max-height:280px"><table><thead><tr><th>Date</th><th>Docket</th><th>Country</th>
+        <th class="num">Weight</th><th class="num">Band</th><th class="num">SingPost S$</th><th class="num">Expected S$</th><th class="num">SG Link S$</th></tr></thead><tbody>`;
+    r.sp.slice(0,200).forEach(o=>{ h+=`<tr><td>${esc(o.date||"")}</td><td>${esc(o.docket||"")}</td><td>${esc(o.country||"")} <span class="muted">${esc(o.code||"")}</span></td>
+      <td class="num">${o.weight}</td><td class="num">${o.band}</td><td class="num">${o.billed!=null?o.billed.toFixed(2):"—"}</td>
+      <td class="num">${o.expected.toFixed(2)}</td><td class="num">${o.sgl.toFixed(2)}</td></tr>`; });
+    h+=`</tbody></table></div>${r.sp.length>200?`<p class="muted">Showing 200 of ${r.sp.length} — the downloads have them all.</p>`:""}</div>`;
+  }
+  h+=`<div class="card" style="border-color:var(--accent2)"><div class="flexhead">
     <div><div class="step">Output 1 · Reconciliation with vendor</div><h3>Is Linscomm's billing correct?</h3></div>
     <button class="ghost" onclick="downloadDocketRecon('${id}')">⭳ Download reconciliation</button></div>
     <div class="metrics">
