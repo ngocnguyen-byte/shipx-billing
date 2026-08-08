@@ -656,8 +656,8 @@ const SERVICES = [
   id:"sp_post", name:"Singpost Postage", group:"Rate-card", tags:["Recon","Billing","GP","PDF"], status:"ready", docketTab:true,
   description:"Reconcile Linscomm's billing (did they charge the correct ePAC rate?) and bill SG Link. Upload the Linscomm billing export: Date, Docket No, Mode, Schm, Weight, Quantity, Rate, Postage S$, Country. Two rate cards below: Linscomm (cost) and SG Link (sell).",
   rateCards:[
-    {id:"lins", label:"Rate from Linscomm (cost)", keyCol:"code", cols:SP_CARD_COLS, rows:SP_LINS_CARD},
-    {id:"sgl", label:"Rate to SG Link (sell)", keyCol:"code", cols:SP_CARD_COLS, rows:SP_SGL_CARD},
+    {id:"lins", label:"ePAC — cost from Linscomm (per country: item + kg)", keyCol:"code", cols:SP_CARD_COLS, rows:SP_LINS_CARD},
+    {id:"sgl", label:"ePAC — rate to SG Link (per country: item + kg)", keyCol:"code", cols:SP_CARD_COLS, rows:SP_SGL_CARD},
     {id:"sp2cost", label:"Speedpost DI (EU) — cost from SingPost (weight × country)", keyCol:"w", cols:SP2_CARD_COLS, rows:SP2_COST_CARD},
     {id:"sp2sgl",  label:"Speedpost DI (EU) — rate to SG Link (weight × country)",   keyCol:"w", cols:SP2_CARD_COLS, rows:SP2_SGL_CARD}
   ],
@@ -1295,8 +1295,8 @@ const SP_DOCKET_SVC = {
   docketRecon:true,
   description:"Reconcile Linscomm's billing against the SingPost posting dockets, and bill SG Link. Upload the docket PDFs (many) + the Linscomm invoice (Excel). Country is taken from the dockets, matched to invoice lines by docket+qty+weight; postage is checked against the Linscomm rate and SG Link is billed on the SG Link rate. Two downloads: Reconciliation and SG Link billing.",
   rateCards:[
-    {id:"lins",label:"Rate from Linscomm (vendor)",keyCol:"code",cols:SP_CARD_COLS,rows:SP_LINS_CARD},
-    {id:"sgl",label:"Rate to SG Link (customer)",keyCol:"code",cols:SP_CARD_COLS,rows:SP_SGL_CARD}
+    {id:"lins",label:"ePAC — cost from Linscomm (per country: item + kg)",keyCol:"code",cols:SP_CARD_COLS,rows:SP_LINS_CARD},
+    {id:"sgl",label:"ePAC — rate to SG Link (per country: item + kg)",keyCol:"code",cols:SP_CARD_COLS,rows:SP_SGL_CARD}
   ]
 };
 SVC[SP_DOCKET_SVC.id]=SP_DOCKET_SVC;   /* merged into Singpost Postage as its "Dockets" tab — not a separate service */
