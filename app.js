@@ -133,6 +133,11 @@ function sp2Rate(rows,country,wt){
   const v=num(best[c]);
   return v==null?null:{rate:round2(v), band:num(best.w)};
 }
+function _sp2CardAOA(rows,title){
+  const aoa=[[title],["Weight (kg) not exceeding"].concat(SP2_CC)];
+  (rows||[]).forEach(r=>aoa.push([num(r.w)].concat(SP2_CC.map(c=>num(r[c])))));
+  return aoa;
+}
 const SERVICES = [
 /* ---------------- CCL ---------------- */
 {
@@ -666,57 +671,93 @@ const SERVICES = [
     {key:"rate",label:"Rate",aliases:["rate"],required:false},
     {key:"postage",label:"Postage S$",aliases:["postages","postage"],required:false},
     {key:"country",label:"Country",aliases:["country"],required:true} ]},
+  sheetService(name){ const n=norm(name);
+    if(n.indexOf("speedpost")>=0||n.indexOf("spost")>=0||n.indexOf("di")===0) return "sp2";
+    if(n.indexOf("epac")>=0||n.indexOf("pac")>=0) return "epac";
+    return null; },
+  defaultSheetService:"epac",
   calc(rows,rate,st){
     const lins={},sgl={},byName={};
     st.rateCards.lins.rows.forEach(r=>{ lins[norm(r.code)]=r; if(r.dest) byName[norm(r.dest)]=r.code; });
     st.rateCards.sgl.rows.forEach(r=>{ sgl[norm(r.code)]=r; });
-    const lines=[],review=[]; let billedTot=0,expTot=0,sglTot=0,qtyTot=0,wtTot=0;
+    const c2=(st.rateCards.sp2cost||{rows:[]}).rows, s2=(st.rateCards.sp2sgl||{rows:[]}).rows;
+    const lines=[],review=[];
+    const T={epac:{billed:0,exp:0,sgl:0,qty:0,wt:0,n:0}, sp2:{billed:0,exp:0,sgl:0,qty:0,wt:0,n:0}};
     rows.forEach(r=>{
+      const svcKey=(r._svc==="sp2")?"sp2":"epac";
       const country=r.country, qty=num(r.qty)||0, wt=num(r.weight)||0, billed=num(r.postage);
+      const t=T[svcKey];
+      if(svcKey==="sp2"){                       /* Speedpost DI (EU): one rate per row, weight rounded up to the band */
+        const cc=String(country||"").trim().toUpperCase();
+        const cr=sp2Rate(c2,cc,wt), sr=sp2Rate(s2,cc,wt);
+        if(!cr||!sr){ review.push({...r,service:"Speedpost",
+          reason:(!cc?"Country is blank":( (num(wt)!=null&&c2.length&&num(wt)>num(c2[c2.length-1].w)) ? ("Weight "+wt+"kg is above the card (max "+c2[c2.length-1].w+"kg)") : ("Speedpost card has no rate for "+cc+" @ "+wt+"kg")))}); return; }
+        t.billed+=billed||0; t.exp+=cr.rate; t.sgl+=sr.rate; t.qty+=qty; t.wt+=wt; t.n++;
+        lines.push({service:"Speedpost",date:toISO(r.date),docket:r.docket,customer:country,country,code:cc,
+          weight:wt,band:cr.band,qty,billed:billed!=null?round2(billed):null,expected:cr.rate,
+          amount:sr.rate,cost:billed!=null?round2(billed):cr.rate});
+        return;
+      }
       const code=byName[norm(country)];
-      if(!code){ review.push({...r,reason:"Country not in rate card: "+(country||"(blank)")}); return; }
+      if(!code){ review.push({...r,service:"ePAC",reason:"Country not in rate card: "+(country||"(blank)")}); return; }
       const lc=lins[norm(code)], sc=sgl[norm(code)];
-      if(!sc){ review.push({...r,reason:"No SG Link rate for code "+code}); return; }
+      if(!sc){ review.push({...r,service:"ePAC",reason:"No SG Link rate for code "+code}); return; }
       const expected=round2((lc.item||0)*qty+(lc.kg||0)*wt);
       const sgAmt=round2((sc.item||0)*qty+(sc.kg||0)*wt);
-      billedTot+=billed||0; expTot+=expected; sglTot+=sgAmt; qtyTot+=qty; wtTot+=wt;
-      lines.push({date:toISO(r.date),docket:r.docket,customer:country,country,code,weight:wt,qty,
+      t.billed+=billed||0; t.exp+=expected; t.sgl+=sgAmt; t.qty+=qty; t.wt+=wt; t.n++;
+      lines.push({service:"ePAC",date:toISO(r.date),docket:r.docket,customer:country,country,code,weight:wt,qty,
         billed:billed!=null?round2(billed):null,expected,amount:sgAmt,cost:billed!=null?round2(billed):expected});
     });
-    const variance=round2(billedTot-expTot), margin=round2(sglTot-billedTot);
-    const recon={ title:"Reconciliation with vendor (Linscomm)",
-      metrics:[
-        {label:"Billed line items",value:lines.length},
-        {label:"Total articles",value:qtyTot},
-        {label:"Total weight (kg)",value:round2(wtTot)},
-        {label:"Linscomm billed postage (S$)",value:round2(billedTot),money:true},
-        {label:"Rate-card expected (S$)",value:round2(expTot),money:true},
-        {label:"Rate variance (S$)",value:variance,money:true},
-        {label:"Billing to SG Link (S$)",value:round2(sglTot),money:true},
-        {label:"SG Link margin / GP (S$)",value:margin,money:true}
-      ],
+    const met=(k,label)=>{ const t=T[k]; return [
+      {label:label+" · lines",value:t.n},
+      {label:label+" · articles",value:t.qty},
+      {label:label+" · weight (kg)",value:round2(t.wt)},
+      {label:label+" · SingPost billed (S$)",value:round2(t.billed),money:true},
+      {label:label+" · rate-card expected (S$)",value:round2(t.exp),money:true},
+      {label:label+" · rate variance (S$)",value:round2(t.billed-t.exp),money:true},
+      {label:label+" · billing to SG Link (S$)",value:round2(t.sgl),money:true},
+      {label:label+" · margin / GP (S$)",value:round2(t.sgl-t.billed),money:true}]; };
+    const hasSp2=T.sp2.n>0;
+    const variance=round2((T.epac.billed+T.sp2.billed)-(T.epac.exp+T.sp2.exp));
+    const recon={ title:"Reconciliation with vendor"+(hasSp2?" — ePAC + Speedpost":" (Linscomm)"),
+      metrics: met("epac","ePAC").concat(hasSp2?met("sp2","Speedpost"):[]),
       verdict: Math.abs(variance)<1
-        ? "✓ Linscomm applied the correct ePAC rate on all "+lines.length+" billed lines (variance S$"+variance.toFixed(2)+" = rounding only)."
-        : "⚠ Rate variance S$"+variance.toFixed(2)+" across "+lines.length+" lines — check the Diff_Postage column; Linscomm may have mis-rated some lines."
+        ? "✓ The vendor applied the correct rate on all "+(T.epac.n+T.sp2.n)+" billed lines (variance S$"+variance.toFixed(2)+" = rounding only)."
+        : "⚠ Rate variance S$"+variance.toFixed(2)+" across "+(T.epac.n+T.sp2.n)+" lines — check the Diff_Postage column; some lines may be mis-rated."
     };
-    return {lines,review,currency:"$",recon,
-      columns:[{k:"date",l:"Date"},{k:"docket",l:"Docket"},{k:"country",l:"Country"},{k:"code",l:"Code"},
-        {k:"weight",l:"Weight",num:true},{k:"qty",l:"Qty",num:true},
-        {k:"billed",l:"Linscomm S$",num:true,money:true},{k:"expected",l:"Expected S$",num:true,money:true},
-        {k:"amount",l:"SG Link S$",num:true,money:true,tot:true}]};
+    const cols=[{k:"date",l:"Date"},{k:"docket",l:"Docket"}]
+      .concat(hasSp2?[{k:"service",l:"Service"}]:[])
+      .concat([{k:"country",l:"Country"},{k:"code",l:"Code"},
+        {k:"weight",l:"Weight",num:true}])
+      .concat(hasSp2?[{k:"band",l:"Rate band (kg)",num:true}]:[])
+      .concat([{k:"qty",l:"Qty",num:true},
+        {k:"billed",l:"SingPost S$",num:true,money:true},{k:"expected",l:"Expected S$",num:true,money:true},
+        {k:"amount",l:"SG Link S$",num:true,money:true,tot:true}]);
+    return {lines,review,currency:"$",recon,columns:cols};
   },
   buildWorkbook(res,st){ // Output 2 — Billing to SG Link, live VLOOKUP on SG Link card
     const N=res.lines.length;
     const aoa=[[null,null,null,null,fcell("SUM(E3:E"+(N+2)+")",sumBy(res.lines,"weight")),fcell("SUM(F3:F"+(N+2)+")",sumBy(res.lines,"qty"),"0"),null,null,null,fcell("SUM(J3:J"+(N+2)+")",sumBy(res.lines,"amount"))],
       ["Date\nOrdinary","Docket No","Mode","Schm","Weight (Kg)","Quantity","Rate","Country","Country Code","Postage to SG Link (SGD)"]];
-    res.lines.forEach((o,i)=>{ const R=i+3;
+    res.lines.filter(o=>o.service!=="Speedpost").forEach((o,i)=>{ const R=i+3;
       aoa.push([o.date,o.docket,"AIR","EP",o.weight,o.qty,"CNT",o.country,o.code,
         fcell("VLOOKUP(I"+R+",'Rate to SG Link'!$C:$E,2,0)*F"+R+"+VLOOKUP(I"+R+",'Rate to SG Link'!$C:$E,3,0)*E"+R, o.amount)]); });
-    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Jun");
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"ePAC");
+    const sp=res.lines.filter(o=>o.service==="Speedpost");
+    const styleRefs=[{sheet:1,refs:["J1"]}];
+    if(sp.length){                                       /* second sheet: Speedpost, priced by weight band */
+      const M=sp.length;
+      const a2=[[null,null,null,null,fcell("SUM(E3:E"+(M+2)+")",round2(sumBy(sp,"weight"))),fcell("SUM(F3:F"+(M+2)+")",sumBy(sp,"qty"),"0"),null,null,null,fcell("SUM(J3:J"+(M+2)+")",round2(sumBy(sp,"amount")))],
+        ["Date\nOrdinary","Docket No","Mode","Schm","Weight (Kg)","Quantity","Rate band (Kg)","Country","Country Code","Postage to SG Link (SGD)"]];
+      sp.forEach(o=>a2.push([o.date,o.docket,"AIR","SP",o.weight,o.qty,o.band,o.country,o.code,m2(o.amount)]));
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a2),"Speedpost");
+      styleRefs.push({sheet:2,refs:["J1"]});
+    }
     const sg=[["SG LINK RATE CARD"],["Zone","Destination","Code","Item S$","Kg S$"]];
     st.rateCards.sgl.rows.forEach(r=>sg.push([r.zone,r.dest,r.code,r.item,r.kg]));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sg),"Rate to SG Link");
-    return {wb, name:"Singpost Postage Billing_SGL", styleRefs:[{sheet:1,refs:["J1"]}]};
+    if(sp.length) XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_sp2CardAOA(st.rateCards.sp2sgl.rows,"SPEEDPOST — RATE TO SG LINK")),"Speedpost rate SGL");
+    return {wb, name:"Singpost Postage Billing_SGL", styleRefs};
   },
   buildRecon(res,st){ // Output 1 — Reconciliation, live VLOOKUP on Linscomm card
     const N=res.lines.length; const wb=XLSX.utils.book_new();
@@ -726,11 +767,21 @@ const SERVICES = [
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),"Reconciliation Summary");
     const aoa=[[null,null,null,null,fcell("SUM(E3:E"+(N+2)+")",sumBy(res.lines,"weight")),fcell("SUM(F3:F"+(N+2)+")",sumBy(res.lines,"qty"),"0"),null,fcell("SUM(H3:H"+(N+2)+")",sumBy(res.lines,"billed")),null,null,fcell("SUM(K3:K"+(N+2)+")",sumBy(res.lines,"expected")),fcell("SUM(L3:L"+(N+2)+")",round2(sumBy(res.lines,"billed")-sumBy(res.lines,"expected")))],
       ["Date\nOrdinary","Docket No","Mode","Schm","Weight (Kg)","Quantity","Rate","Postage S$","Country","Country Code","Postage - From Rate","Diff_Postage"]];
-    res.lines.forEach((o,i)=>{ const R=i+3;
+    res.lines.filter(o=>o.service!=="Speedpost").forEach((o,i)=>{ const R=i+3;
       aoa.push([o.date,o.docket,"AIR","EP",o.weight,o.qty,"CNT",o.billed,o.country,o.code,
         fcell("VLOOKUP(J"+R+",'Rate from Linscomm'!$C:$E,2,0)*F"+R+"+VLOOKUP(J"+R+",'Rate from Linscomm'!$C:$E,3,0)*E"+R, o.expected),
         fcell("K"+R+"-H"+R, round2((o.expected||0)-(o.billed||0)))]); });
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Billing Output");
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"ePAC");
+    const sp=res.lines.filter(o=>o.service==="Speedpost");
+    if(sp.length){
+      const M=sp.length;
+      const a2=[[null,null,null,null,fcell("SUM(E3:E"+(M+2)+")",round2(sumBy(sp,"weight"))),fcell("SUM(F3:F"+(M+2)+")",sumBy(sp,"qty"),"0"),null,fcell("SUM(H3:H"+(M+2)+")",round2(sumBy(sp,"billed"))),null,null,fcell("SUM(K3:K"+(M+2)+")",round2(sumBy(sp,"expected"))),fcell("SUM(L3:L"+(M+2)+")",round2(sumBy(sp,"expected")-sumBy(sp,"billed")))],
+        ["Date\nOrdinary","Docket No","Mode","Schm","Weight (Kg)","Quantity","Rate band (Kg)","Postage S$","Country","Country Code","Postage - From Rate","Diff_Postage"]];
+      sp.forEach(o=>{ a2.push([o.date,o.docket,"AIR","SP",o.weight,o.qty,o.band,o.billed,o.country,o.code,m2(o.expected),
+        m2(round2((o.expected||0)-(o.billed||0)))]); });
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a2),"Speedpost");
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_sp2CardAOA(st.rateCards.sp2cost.rows,"SPEEDPOST — COST FROM SINGPOST")),"Speedpost cost card");
+    }
     const li=[["RATES FROM LINS COMMUNICATION"],["Zone","Destination","Code","Item S$","Kg S$"]];
     st.rateCards.lins.rows.forEach(r=>li.push([r.zone,r.dest,r.code,r.item,r.kg]));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(li),"Rate from Linscomm");
@@ -4125,6 +4176,23 @@ function handleFiles(id,files){
     const rd=new FileReader();
     rd.onload=ev=>{
       const wb=XLSX.read(ev.target.result,{type:"array",cellDates:true});
+      const svc0=SVC[id];
+      if(svc0&&svc0.sheetService){                       /* one input file, one sheet per service */
+        let found=0;
+        wb.SheetNames.forEach(sn=>{
+          const key=svc0.sheetService(sn); if(!key) return;
+          const rows=sheetRows(wb.Sheets[sn]).filter(r=>r.some(c=>c!==""&&c!=null));
+          if(!rows.length) return;
+          found++; allRows.push({name:f.name+" · "+sn, rows, svcKey:key});
+        });
+        if(!found){                                       /* nothing recognised — fall back to the first sheet */
+          const rows=sheetRows(wb.Sheets[wb.SheetNames[0]]).filter(r=>r.some(c=>c!==""&&c!=null));
+          allRows.push({name:f.name+" · "+wb.SheetNames[0], rows, svcKey:svc0.defaultSheetService||null});
+        }
+        names.push(f.name);
+        if(--pending===0) ingest(id,allRows);
+        return;
+      }
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=sheetRows(ws).filter(r=>r.some(c=>c!==""&&c!=null));
       allRows.push({name:f.name,rows}); names.push(f.name);
@@ -4152,6 +4220,7 @@ function ingest(id, fileRows){
   let reports=[];
   fileRows.forEach(fr=>{
     const {mapped,report}=validateFile(svc,fr.rows,fr.name);
+    if(fr.svcKey) mapped.forEach(o=>{ o._svc=fr.svcKey; });
     st.files.push(fr.name); st.parsed.push(mapped);
     reports.push(report);
   });
