@@ -626,7 +626,7 @@ const SERVICES = [
     res.lines.forEach((o,i)=>{ const R=i+3;
       aoa.push([o.track,o.usd,{t:"n",v:o.sgd,z:"0.000"},{t:"n",f:"C"+R+"*"+pct+"%",v:o.admin,z:"0.000"},{t:"n",f:"D"+R+"+C"+R,v:o.amount,z:"0.000"}]); });
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"SGL");
-    return {wb, name:"SGL - Singpost D&T"};
+    return {wb, name:"SGL - Singpost D&T", styleRefs:[{sheet:1,refs:["E1"]}]};
   }
 },
 /* ---------------- Singpost Postage ---------------- */
@@ -697,7 +697,7 @@ const SERVICES = [
     const sg=[["SG LINK RATE CARD"],["Zone","Destination","Code","Item S$","Kg S$"]];
     st.rateCards.sgl.rows.forEach(r=>sg.push([r.zone,r.dest,r.code,r.item,r.kg]));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sg),"Rate to SG Link");
-    return {wb, name:"Singpost Postage Billing_SGL"};
+    return {wb, name:"Singpost Postage Billing_SGL", styleRefs:[{sheet:1,refs:["J1"]}]};
   },
   buildRecon(res,st){ // Output 1 — Reconciliation, live VLOOKUP on Linscomm card
     const N=res.lines.length; const wb=XLSX.utils.book_new();
@@ -1089,7 +1089,8 @@ const SERVICES = [
         if(h==="Other Surcharge") return (o.billOther!=null?o.billOther:o.otherRaw);
         const i=nmap[norm(h)]; return i!==undefined?raw[i]:null; })); });
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Sheet1");
-    return {wb,name:("FedEx Billing - "+String(cust)+" - "+monthLabel(res)).replace(/[\/\\:*?\[\]"<>|]/g,"_"), nameHasMonth:true};
+    const _sr=[_fi,_ui,_oi].filter(i=>i>=0).map(i=>XLSX.utils.encode_col(i)+"1");
+    return {wb,name:("FedEx Billing - "+String(cust)+" - "+monthLabel(res)).replace(/[\/\\:*?\[\]"<>|]/g,"_"), nameHasMonth:true, styleRefs:[{sheet:1,refs:_sr}]};
   },
   buildWorkbook(res,st){
     const wb=XLSX.utils.book_new(), by={}, used={};
@@ -1397,7 +1398,7 @@ function buildDocketSGLWB(r,st){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Billing");
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_spCardAOA(st.rateCards.sgl.rows,["SG LINK RATE CARD"])),"Rate to SG Link");
   wb.Workbook={CalcPr:{fullCalcOnLoad:true}};
-  return {wb};
+  return {wb, styleRefs:[{sheet:1,refs:["J1"]}]};
 }
 async function xlsxHighlightNonZero(u8, sheetIndex, sqref){
   if(typeof JSZip==="undefined") return u8;
@@ -1501,10 +1502,11 @@ async function downloadDocketRecon(id){
   const u8=await xlsxHighlightNonZero(arr,3,sqref);
   saveU8(new Uint8Array(u8),"Reconciliation Linscomm Singpost_"+todayISO()+".xlsx");
 }
-function downloadDocketSGL(id){
+async function downloadDocketSGL(id){
   const r=state[id].result; if(!r) return;
-  const {wb}=buildDocketSGLWB(r,state[id]);
-  XLSX.writeFile(wb,"Singpost Postage Billing_SGL_"+todayISO()+".xlsx");
+  const {wb,styleRefs}=buildDocketSGLWB(r,state[id]);
+  const u8=XLSX.write(wb,{type:"array",bookType:"xlsx"});
+  saveU8(await xlsxStyleCells(u8,styleRefs),"Singpost Postage Billing_SGL_"+todayISO()+".xlsx");
 }
 
 
@@ -4496,8 +4498,9 @@ function downloadReview(id){
 function downloadRecon(id){
   const svc=SVC[id], st=state[id], res=st.result;
   if(!res||!svc.buildRecon){ alert("No reconciliation to download."); return; }
-  const {wb,name}=svc.buildRecon(res,st);
-  XLSX.writeFile(wb, `${name}_${monthLabel(res)}.xlsx`);
+  const br=svc.buildRecon(res,st); const _fn=`${br.name}_${monthLabel(res)}.xlsx`;
+  if(br.styleRefs&&br.styleRefs.length){ xlsxStyleCells(XLSX.write(br.wb,{type:"array",bookType:"xlsx"}),br.styleRefs).then(u8=>saveU8(u8,_fn)); return; }
+  XLSX.writeFile(br.wb, _fn);
 }
 async function downloadCustomerFile(id,acct){ const svc=SVC[id],st=state[id],res=st&&st.result;
   if(!res||!svc.buildCustomerFile) return;
