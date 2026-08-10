@@ -1322,11 +1322,24 @@ function docketReconcile(st){
       const expDock=round2(dls.reduce((s,x)=>{ const code=spCodeFor(x.country); const lc=code?lins[norm(code)]:null; return s+(lc?((lc.item||0)*x.qty+(lc.kg||0)*x.weight):0); },0));
       const ib=round2(ils.reduce((s,x)=>s+num(x.postage),0));
       const invRows=ils.map(x=>x._row).filter(x=>x!=null);
-      const missing=dls.filter(x=>!x._used).map(x=>{ const cd=spCodeFor(x.country); const lc2=cd?lins[norm(cd)]:null, sc2=cd?sgl[norm(cd)]:null;
-        return {country:x.country,code:cd||"",qty:x.qty,weight:x.weight,
-          expLins:lc2?round2((lc2.item||0)*x.qty+(lc2.kg||0)*x.weight):null,
-          expSGL:sc2?round2((sc2.item||0)*x.qty+(sc2.kg||0)*x.weight):null}; });
-      discrepancies.push({docket:dk,country:(dls[0]&&dls[0].country)||"",dq,dw,iq,iw,qtyDiff:iq-dq,billImpact:round2(ib-expDock),missing,
+      /* diagnose this docket on its own: pair docket lines with invoice lines, then say what is left over */
+      const rate=(cd,q,w,card)=>{ const c=cd?card[norm(cd)]:null; return c?round2((c.item||0)*q+(c.kg||0)*w):null; };
+      const D=dls.map(x=>({d:x,u:false})), I=ils.map(l=>({l,u:false}));
+      const pair=(test)=>D.forEach(a=>{ if(a.u) return; const b=I.find(y=>!y.u&&test(a.d,y.l)); if(b){ a.u=true; b.u=true; a.with=b.l; } });
+      pair((d,l)=>d.qty===l.qty && Math.abs(d.weight-l.weight)<=0.011);        /* same line */
+      pair((d,l)=>d.qty===l.qty);                                              /* same pieces, different weight */
+      pair((d,l)=>Math.abs(d.weight-l.weight)<=0.011);                         /* same weight, different pieces */
+      pair((d,l)=>Math.abs(d.weight-l.weight)<=Math.max(0.5,d.weight*0.2));    /* nearest look-alike */
+      const differs=[], missing=[];
+      D.forEach(a=>{ const cd=spCodeFor(a.d.country);
+        if(a.with){ if(a.d.qty!==a.with.qty || Math.abs(a.d.weight-a.with.weight)>0.011)
+            differs.push({country:a.d.country,code:cd||"",dq:a.d.qty,dw:a.d.weight,iq:a.with.qty,iw:a.with.weight,
+              row:a.with._row,billed:a.with.postage,expLins:rate(cd,a.d.qty,a.d.weight,lins)}); }
+        else missing.push({country:a.d.country,code:cd||"",qty:a.d.qty,weight:a.d.weight,
+              expLins:rate(cd,a.d.qty,a.d.weight,lins), expSGL:rate(cd,a.d.qty,a.d.weight,sgl)});
+      });
+      const extraInv=I.filter(y=>!y.u).map(y=>({row:y.l._row,qty:y.l.qty,weight:y.l.weight,postage:y.l.postage}));
+      discrepancies.push({docket:dk,country:(dls[0]&&dls[0].country)||"",dq,dw,iq,iw,qtyDiff:iq-dq,billImpact:round2(ib-expDock),missing,differs,extraInv,
         rows:invRows, rowsTxt:!invRows.length?"":(invRows.length>8
           ? (Math.min.apply(null,invRows)+"–"+Math.max.apply(null,invRows)+" ("+invRows.length+" lines)")
           : invRows.join(", "))});
@@ -1528,10 +1541,19 @@ function buildDocketReconWB(r,st){
   dsc.push([]); dsc.push(["2) Quantity / weight discrepancies (Linscomm billed vs docket):"]);
   dsc.push(["Docket No","Country","Docket Qty","Docket Wt","Linscomm Qty","Linscomm Wt","Qty Diff","Bill Impact S$","Row(s) in your Linscomm invoice"]);
   (r.discrepancies||[]).forEach(d=>dsc.push([d.docket,d.country,d.dq,d.dw,d.iq,d.iw,d.qtyDiff,m2(d.billImpact),d.rowsTxt||""]));
-  const anyMissing=(r.discrepancies||[]).some(d=>(d.missing||[]).length);
-  if(anyMissing){ dsc.push([]); dsc.push(["2b) The exact docket lines Linscomm did NOT bill (everything else on these dockets was billed correctly):"]);
+  if((r.discrepancies||[]).some(d=>(d.missing||[]).length)){
+    dsc.push([]); dsc.push(["2b) On the docket but NOT billed at all (everything else on these dockets is correct):"]);
     dsc.push(["Docket No","Country","Code","Qty","Weight kg","Expected Linscomm S$","Expected SG Link S$"]);
     (r.discrepancies||[]).forEach(d=>(d.missing||[]).forEach(x=>dsc.push([d.docket,x.country,x.code,x.qty,x.weight,m2(x.expLins),m2(x.expSGL)]))); }
+  if((r.discrepancies||[]).some(d=>(d.differs||[]).length)){
+    dsc.push([]); dsc.push(["2c) Billed, but with a different quantity / weight than the docket:"]);
+    dsc.push(["Docket No","Country","Code","Docket Qty","Docket Wt","Billed Qty","Billed Wt","Invoice row","Postage billed S$","Rate on the docket figures S$","Over/under S$"]);
+    (r.discrepancies||[]).forEach(d=>(d.differs||[]).forEach(x=>dsc.push([d.docket,x.country,x.code,x.dq,x.dw,x.iq,x.iw,x.row,
+      m2(x.billed),m2(x.expLins),m2(x.billed!=null&&x.expLins!=null?round2(x.billed-x.expLins):null)]))); }
+  if((r.discrepancies||[]).some(d=>(d.extraInv||[]).length)){
+    dsc.push([]); dsc.push(["2d) On the Linscomm invoice but not on any docket line:"]);
+    dsc.push(["Docket No","Invoice row","Qty","Weight kg","Postage S$"]);
+    (r.discrepancies||[]).forEach(d=>(d.extraInv||[]).forEach(x=>dsc.push([d.docket,x.row,x.qty,x.weight,m2(x.postage)]))); }
   if(r.review.length){ dsc.push([]); dsc.push(["3) Lines needing review (not billed in outputs):"]);
     dsc.push(["Invoice row","Docket","Qty","Weight","Country","Service","Reason"]);
     r.review.forEach(x=>dsc.push([x.row==null?"":x.row,x.docket,x.qty,x.weight,x.country||"",x.service||"ePAC",x.reason])); }
@@ -1705,12 +1727,21 @@ function renderDocketResults(id){
   if(r.discrepancies.length){
     const miss=[].concat.apply([], r.discrepancies.map(d=>(d.missing||[]).map(x=>Object.assign({docket:d.docket},x))));
     h+=`<div class="banner warn">⚠ <b>${r.discrepancies.length}</b> docket(s) where the totals differ from the invoice.
-      ${miss.length?`Only the line(s) below were not billed — everything else on those dockets is correct.`:""}</div>`;
-    if(miss.length) h+=`<div class="tbl-scroll" style="max-height:260px"><table><thead><tr><th>Docket</th><th>Country</th>
+      The line(s) below are the only ones involved — everything else on those dockets matches.</div>`;
+    if(miss.length) h+=`<p class="sub" style="margin:8px 0 4px"><b>On the docket but not billed at all:</b></p>
+      <div class="tbl-scroll" style="max-height:240px"><table><thead><tr><th>Docket</th><th>Country</th>
       <th class="num">Qty</th><th class="num">Weight kg</th><th class="num">Not billed — Linscomm S$</th><th class="num">Would bill SG Link S$</th></tr></thead><tbody>`
       + miss.map(x=>`<tr><td>${esc(x.docket)}</td><td>${esc(x.country)} <span class="muted">${esc(x.code||"")}</span></td>
         <td class="num">${x.qty}</td><td class="num">${x.weight}</td><td class="num">${x.expLins!=null?x.expLins.toFixed(2):"—"}</td>
         <td class="num">${x.expSGL!=null?x.expSGL.toFixed(2):"—"}</td></tr>`).join("")
+      + `</tbody></table></div>`;
+    const dif=[].concat.apply([], r.discrepancies.map(d=>(d.differs||[]).map(x=>Object.assign({docket:d.docket},x))));
+    if(dif.length) h+=`<p class="sub" style="margin:10px 0 4px"><b>Billed with a different quantity / weight:</b></p>
+      <div class="tbl-scroll" style="max-height:240px"><table><thead><tr><th>Docket</th><th>Country</th>
+      <th class="num">Docket</th><th class="num">Billed</th><th>Invoice row</th><th class="num">Postage S$</th><th class="num">Rate on docket figures</th></tr></thead><tbody>`
+      + dif.map(x=>`<tr><td>${esc(x.docket)}</td><td>${esc(x.country)} <span class="muted">${esc(x.code||"")}</span></td>
+        <td class="num">${x.dq} pcs / ${x.dw} kg</td><td class="num">${x.iq} pcs / ${x.iw} kg</td><td>${x.row||""}</td>
+        <td class="num">${x.billed!=null?x.billed.toFixed(2):"—"}</td><td class="num">${x.expLins!=null?x.expLins.toFixed(2):"—"}</td></tr>`).join("")
       + `</tbody></table></div>`;
   }
   if(r.notBilled.length) h+=`<div class="banner warn">⚠ <b>${r.notBilled.length}</b> docket(s) posted but NOT in the Linscomm invoice: ${r.notBilled.slice(0,10).map(esc).join(", ")}${r.notBilled.length>10?'…':''}</div>`;
