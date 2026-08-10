@@ -3828,7 +3828,9 @@ function dataShipmentAOA(month){
   const rows=dataShipmentRows(month);
   const aoa=[[],DS_COLS];
   rows.forEach(r=>aoa.push([r.month,r.date,r.acct,r.shipper,r.sales,r.debit,r.amlAwb,r.spAwb,r.dhlAwb,r.service,r.provider,
-    r.dest,r.pkgs,r.gross,r.vol,r.chargeable,r.freight,r.extra,r.gst,m2(r.total)]));
+    r.dest,r.pkgs,r.gross,r.vol,r.chargeable,r.freight,r.extra,r.gst,
+    /* keep the billed value exactly as billed (shown to 2 dp) so the column sums to the billing total */
+    (num(r.total)!=null?{t:"n",v:num(r.total),z:"0.00"}:null)]));
   return {aoa,rows};
 }
 function dsMonth(){ return dsState.month||prevMonthISO(); }
