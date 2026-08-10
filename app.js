@@ -3738,9 +3738,10 @@ function dataShipmentRows(month){
       const wt=num(_dsn(o,["weight","weightKg","actual","charge"]));
       const cw=num(_dsn(o,["billW","chargeable","charge","weightKg","weight"]));
       const _m=o._m||{};
-      /* AML AWB = our own Amilo Shipment ID; Service Provider AWB = the carrier's number */
-      const amlAwb=_dsn(o,["amilo"])||_m.amilo||_dsn(o,["awb","ship","docket","bag","ref"])||_dsn(o,["track","cn35","item"]);
-      const spAwb=_dsn(o,["track","cn35","item"])||_m.track||_dsn(o,["awb"]);
+      /* AML AWB = our own Amilo Shipment ID — blank for services that do not have one (user, 2026-08-10);
+         Service Provider AWB = the carrier's number */
+      const amlAwb=_dsn(o,["amilo"])||_m.amilo||"";
+      const spAwb=_dsn(o,["track","cn35","item","awb","ship","docket","bag"])||_m.track||"";
       out.push({
         month:month+"-01",
         date:toISO(_dsn(o,["date"]))||month+"-01",
