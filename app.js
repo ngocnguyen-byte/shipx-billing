@@ -1744,21 +1744,24 @@ function renderDocketResults(id){
     const miss=[].concat.apply([], r.discrepancies.map(d=>(d.missing||[]).map(x=>Object.assign({docket:d.docket},x))));
     h+=`<div class="banner warn">⚠ <b>${r.discrepancies.length}</b> docket(s) where the totals differ from the invoice.
       The line(s) below are the only ones involved — everything else on those dockets matches.</div>`;
-    if(miss.length) h+=`<p class="sub" style="margin:8px 0 4px"><b>On the docket but not billed at all:</b></p>
+    if(miss.length) h+=`<div class="issuebox miss"><p class="issuehead">⚠ On the docket but NOT billed at all — money you have not been invoiced for</p>
       <div class="tbl-scroll" style="max-height:240px"><table><thead><tr><th>Docket</th><th>Country</th>
       <th class="num">Qty</th><th class="num">Weight kg</th><th class="num">Not billed — Linscomm S$</th><th class="num">Would bill SG Link S$</th></tr></thead><tbody>`
       + miss.map(x=>`<tr><td>${esc(x.docket)}</td><td>${esc(x.country)} <span class="muted">${esc(x.code||"")}</span></td>
         <td class="num">${x.qty}</td><td class="num">${x.weight}</td><td class="num">${x.expLins!=null?x.expLins.toFixed(2):"—"}</td>
         <td class="num">${x.expSGL!=null?x.expSGL.toFixed(2):"—"}</td></tr>`).join("")
-      + `</tbody></table></div>`;
+      + `</tbody></table>`
+      + `<p class="issuefoot">Total not billed: <b>${money(round2(miss.reduce((s,x)=>s+(num(x.expLins)||0),0)))}</b> at Linscomm rates · <b>${money(round2(miss.reduce((s,x)=>s+(num(x.expSGL)||0),0)))}</b> if billed on to SG Link</p></div></div>`;
     const dif=[].concat.apply([], r.discrepancies.map(d=>(d.differs||[]).map(x=>Object.assign({docket:d.docket},x))));
-    if(dif.length) h+=`<p class="sub" style="margin:10px 0 4px"><b>Billed with a different quantity / weight:</b></p>
+    if(dif.length) h+=`<div class="issuebox diff"><p class="issuehead">⚠ Billed with a different quantity / weight than the docket</p>
       <div class="tbl-scroll" style="max-height:240px"><table><thead><tr><th>Docket</th><th>Country</th>
-      <th class="num">Docket</th><th class="num">Billed</th><th>Invoice row</th><th class="num">Postage S$</th><th class="num">Rate on docket figures</th></tr></thead><tbody>`
+      <th class="num">Docket</th><th class="num">Billed</th><th>Invoice row</th><th class="num">Postage S$</th><th class="num">Rate on docket figures</th><th class="num">Over/under</th></tr></thead><tbody>`
       + dif.map(x=>`<tr><td>${esc(x.docket)}</td><td>${esc(x.country)} <span class="muted">${esc(x.code||"")}</span></td>
         <td class="num">${x.dq} pcs / ${x.dw} kg</td><td class="num">${x.iq} pcs / ${x.iw} kg</td><td>${x.row||""}</td>
-        <td class="num">${x.billed!=null?x.billed.toFixed(2):"—"}</td><td class="num">${x.expLins!=null?x.expLins.toFixed(2):"—"}</td></tr>`).join("")
-      + `</tbody></table></div>`;
+        <td class="num">${x.billed!=null?x.billed.toFixed(2):"—"}</td><td class="num">${x.expLins!=null?x.expLins.toFixed(2):"—"}</td>
+        <td class="num"><b>${(x.billed!=null&&x.expLins!=null)?money(round2(x.billed-x.expLins)):"—"}</b></td></tr>`).join("")
+      + `</tbody></table>`
+      + `<p class="issuefoot">Over-charged in total: <b>${money(round2(dif.reduce((s,x)=>s+((x.billed!=null&&x.expLins!=null)?(x.billed-x.expLins):0),0)))}</b></p></div></div>`;
   }
   if(r.notBilled.length) h+=`<div class="banner warn">⚠ <b>${r.notBilled.length}</b> docket(s) posted but NOT in the Linscomm invoice: ${r.notBilled.slice(0,10).map(esc).join(", ")}${r.notBilled.length>10?'…':''}</div>`;
   if((r.invOnly||[]).length) h+=`<div class="banner warn">⚠ <b>${r.invOnly.length}</b> docket(s) billed by Linscomm with no docket PDF uploaded: ${r.invOnly.slice(0,10).map(esc).join(", ")}${r.invOnly.length>10?'…':''}</div>`;

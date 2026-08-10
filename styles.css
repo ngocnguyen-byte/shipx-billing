@@ -52,6 +52,16 @@
   button.sm{ padding:6px 12px; font-size:12.5px; }
   button.danger{ background:#fff; color:var(--danger); border:1.5px solid #e3a49c; }
   /* download buttons — always green so they stand out wherever they appear */
+  /* the two problem tables in the docket check — deliberately loud */
+  .issuebox{ border-radius:10px; padding:10px 12px 4px; margin:10px 0; }
+  .issuebox .issuehead{ margin:2px 0 8px; font-weight:700; font-size:13px; }
+  .issuebox .issuefoot{ margin:8px 2px 8px; font-size:12.5px; }
+  .issuebox table th{ background:transparent; color:inherit; border-bottom:1.5px solid currentColor; }
+  .issuebox.miss{ background:#fff5e6; border:2px solid #e8912d; color:#8a4b00; }
+  .issuebox.miss table th{ color:#8a4b00; }
+  .issuebox.diff{ background:#fdecea; border:2px solid var(--danger); color:#8c2d22; }
+  .issuebox.diff table th{ color:#8c2d22; }
+  .issuebox td{ color:var(--ink); }
   button.dl, button.ghost.dl, button.subtle.dl{
     background:var(--ok) !important; color:#fff !important; border:1.5px solid #17683a !important;
     font-weight:700; box-shadow:0 2px 8px rgba(30,125,70,.28);
