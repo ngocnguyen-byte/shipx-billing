@@ -3857,7 +3857,13 @@ async function downloadDataShipment(){
   saveU8(await xlsxStyleCells(u8,[{sheet:2,refs:[XLSX.utils.encode_col(svcs.length+1)+String(piv.length)]}]),
     "Data Shipment_"+MON[(+month.slice(5,7))-1]+" "+month.slice(0,4)+".xlsx");
 }
+function setDsTab(t){ dsState.tab=t; render(); }
 function renderDataShipment(v){
+  const tab=dsState.tab||"sheet";
+  let tabs=`<div class="tabs">
+    <div class="tab ${tab==='sheet'?'active':''}" onclick="setDsTab('sheet')">⛴ Shipment data</div>
+    <div class="tab ${tab==='settings'?'active':''}" onclick="setDsTab('settings')">⚙ Service settings</div></div>`;
+  if(tab==="settings"){ v.innerHTML=tabs+dsSettingsHtml(); return; }
   const month=dsMonth(), {rows}=dataShipmentAOA(month);
   const recs=loadRecords().filter(r=>String(r.month||"").slice(0,7)===month);
   const total=round2(rows.reduce((s,o)=>s+(num(o.total)||0),0));
@@ -3875,7 +3881,11 @@ function renderDataShipment(v){
       <div class="metric"><div class="lbl">Services</div><div class="val">${svcs.length}</div></div>
       <div class="metric good"><div class="lbl">Total charge (SGD)</div><div class="val" style="font-size:19px">${money(total)}</div></div>
     </div>`;
-  h+=`</div><div class="card"><div class="flexhead">
+  h+=dsSheetHtml(month,rows,recs);
+  v.innerHTML=tabs+h+`</div>`;
+}
+function dsSettingsHtml(){
+  let h=`<div class="card"><div class="flexhead">
     <div><div class="step">Service settings</div><h3>How each service appears in the sheet</h3>
       <p class="sub">Type to change any value — it saves as you go and is shared with the team.
       <b>Leave a box empty</b> to use the shipment's own value. The grey text is what the tool uses when the box is empty.</p></div>
@@ -3897,7 +3907,10 @@ function renderDataShipment(v){
       <td>${box("dest",ov.dest,DS_DEST[sv.id]||"",90)}</td>
       <td>${box("sales",ov.sales,DS_SALES,120)}</td></tr>`;
   });
-  h+=`</tbody></table></div></div><div class="card">`;
+  return h+`</tbody></table></div></div>`;
+}
+function dsSheetHtml(month,rows,recs){
+  let h="";
   if(!recs.length) h+=`<div class="banner warn">No saved records for ${esc(month)}. Run the services for that month and click <b>Save to records</b>, then come back.</div>`;
   else{
     h+=`<div class="banner ok">Using: ${recs.map(r=>esc(r.service)+" <span class='muted'>("+(r.lines||[]).length+" lines)</span>").join(" · ")}</div>`;
@@ -3910,7 +3923,7 @@ function renderDataShipment(v){
     h+=`</tbody></table></div>`;
     if(rows.length>200) h+=`<p class="muted">Showing 200 of ${rows.length} — the download has them all.</p>`;
   }
-  v.innerHTML=h+`</div>`;
+  return h;
 }
 function renderNav(){
   const groups={};
@@ -5227,6 +5240,28 @@ function persistRecordFields(r,patch){
   if(typeof SB!=="undefined" && SB){ SB.from("billing_records").update(patch).eq("id",r.id).then(({error})=>{ if(error){ console.error("record update failed",error); alert("Could not save the change to the shared database — check your connection and try again."); } }); }
   else if(typeof saveRecords==="function"){ saveRecords(loadRecords().map(x=>x.id===r.id?r:x)); }
 }
+let recEditId=null, recEditDraft={};
+function startRecEdit(rid){
+  const r=loadRecords().find(x=>x.id===rid); if(!r) return;
+  recEditId=rid; recEditDraft={month:String(r.month||"").slice(0,7), customer:r.customer||"", note:r.note||(r.totals&&r.totals.note)||""};
+  render();
+}
+function cancelRecEdit(){ recEditId=null; recEditDraft={}; render(); }
+function setRecEdit(field,val){ recEditDraft[field]=val; }
+function saveRecEdit(rid){
+  const r=loadRecords().find(x=>x.id===rid); if(!r) return;
+  const m=String(recEditDraft.month||"").trim();
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)){ alert("Pick a valid month first."); return; }
+  const was=r.month;
+  r.month=m;
+  r.customer=String(recEditDraft.customer||"").trim()||r.customer;
+  r.note=String(recEditDraft.note||"");
+  r.totals=r.totals||{}; r.totals.note=r.note; r.totals.customer=r.customer;
+  persistRecordFields(r,{month:r.month, totals:r.totals});
+  if(was!==m) logRateChange("_records","Saved run · "+r.service,"month",was+" → "+m);
+  recEditId=null; recEditDraft={};
+  render();
+}
 function setRecordMonth(rid,val){
   const r=loadRecords().find(x=>x.id===rid); if(!r) return;
   const cur=String(r.month||""), m=String(val||"").trim();
@@ -5283,14 +5318,17 @@ function renderRecords(v){
       <th>Saved</th><th>Service</th><th>Customer</th><th>Month</th><th class="num">Billing</th><th class="num">Shipments</th>
       <th class="num">GP</th><th>Note</th><th></th></tr></thead><tbody>`;
   recs.forEach(r=>{
-    h+=`<tr><td>${esc(r.savedAt.slice(0,16).replace("T"," "))}</td><td>${esc(r.service)}</td><td>${esc(r.customer||"—")}</td>
-      <td style="white-space:nowrap"><input type="month" value="${esc(String(r.month||"").slice(0,7))}" title="Pick the billing month"
-        onchange="setRecordMonth('${r.id}',this.value)"
-        style="padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;background:#fff"></td>
+    const ed=(recEditId===r.id);
+    const inp=(f,v,w,type)=>`<input type="${type||"text"}" value="${esc(v||"")}" oninput="setRecEdit('${f}',this.value)"
+      style="width:${w}px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;background:#fff">`;
+    h+=`<tr${ed?' style="background:#fff8ec"':''}><td>${esc(r.savedAt.slice(0,16).replace("T"," "))}</td><td>${esc(r.service)}</td>
+      <td>${ed?inp("customer",recEditDraft.customer,170):esc(r.customer||"—")}</td>
+      <td style="white-space:nowrap">${ed?inp("month",recEditDraft.month,140,"month"):esc(r.month)}</td>
       <td class="num">${money(r.totals.amount)}</td><td class="num">${r.totals.shipments}</td>
       <td class="num">${r.totals.hasCost?money(r.totals.gp):"—"}</td>
-      <td style="max-width:180px;cursor:pointer" onclick="editRecordNote('${r.id}')" title="Click to edit note">${esc(r.note||(r.totals&&r.totals.note)||"")||'<span class="muted">✎ add note</span>'}</td>
-      <td style="white-space:nowrap"><button class="subtle sm" onclick="redownload('${r.id}')">Download</button>
+      <td style="max-width:180px;${ed?"":"cursor:pointer"}" ${ed?"":`onclick="editRecordNote('${r.id}')" title="Click to edit note"`}>${ed?inp("note",recEditDraft.note,170):(esc(r.note||(r.totals&&r.totals.note)||"")||'<span class="muted">✎ add note</span>')}</td>
+      <td style="white-space:nowrap">${ed?`<button class="sm" onclick="saveRecEdit('${r.id}')">✔ Save</button> <button class="subtle sm" onclick="cancelRecEdit()">Cancel</button>`:`<button class="ghost sm" onclick="startRecEdit('${r.id}')">✎ Edit</button>`}
+        <button class="subtle sm" onclick="redownload('${r.id}')">Download</button>
         ${(r.inputRows&&r.inputRows.length)?`<button class="subtle sm" onclick="downloadRecordInput('${r.id}')">Input</button>`:""}
         <button class="danger sm" onclick="delRecord('${r.id}')">Delete</button></td></tr>`;
   });
@@ -5455,7 +5493,8 @@ function dbToRecord(row){
   return { id:row.id, serviceId:row.service_id, service:row.service, month:row.month,
     totals:row.totals||{}, byCustomer:row.by_customer||[], lines:row.lines||[], columns:row.columns||[],
     currency:row.currency||"$", reviewCount:row.review_count||0, files:row.files||[],
-    savedBy:row.saved_by, savedAt:row.saved_at, inputRows:row.input_rows||[], note:(row.totals&&row.totals.note)||null };
+    savedBy:row.saved_by, savedAt:row.saved_at, inputRows:row.input_rows||[], note:(row.totals&&row.totals.note)||null,
+    customer:(row.totals&&row.totals.customer)||((row.by_customer&&row.by_customer[0])?row.by_customer[0].customer:null) };
 }
 function insertRecordDB(rec){
   if(!SB) return;
