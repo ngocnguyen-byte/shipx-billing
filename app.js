@@ -3705,6 +3705,111 @@ function renderBatchResults(){
   el.innerHTML=h;
 }
 
+/* ============================================================
+   DATA SHIPMENT — one row per shipment across every service,
+   built from the saved records, in the Monthly P&L layout
+   ============================================================ */
+const DS_COLS=["Month","Ship date","Customer's account","Shipper's name","Sales name","Debit Note","AML AWB",
+  "Service Provider AWB","AWB DHL SG \n  / FDX","Service name","Service provider name","Destination","Packages",
+  "Gross weight","Volumetric weight","Charagable weight","Freight charge","Extra surchages (Duties & Taxes)","GST",
+  "Total charge (without GST) (SGD)","AWB_v2","Product","Product type","Regions","Weight range","Destination","Check Dup"];
+/* which vendor actually carries each service */
+const DS_PROVIDER={ccl:"Linscomm",domsg:"Amilo MY",ioss:"Linscomm",linehaul:"Bpost",pickup:"SingPost",
+  ame:"Bpost",sp_dt:"Linscomm",sp_post:"SingPost",fedex:"FedEx"};
+const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
+function dataShipmentRows(month){
+  const out=[];
+  loadRecords().filter(r=>String(r.month||"").slice(0,7)===month).forEach(rec=>{
+    const svcName=String(rec.service||"").split(" — ")[0].split(" (")[0];
+    const prov=DS_PROVIDER[rec.serviceId]||"";
+    (rec.lines||[]).forEach(o=>{
+      const wt=num(_dsn(o,["weight","weightKg","actual","charge"]));
+      const cw=num(_dsn(o,["billW","chargeable","charge","weightKg","weight"]));
+      const awb=_dsn(o,["awb","track","ship","cn35","item","docket","ref","bag"]);
+      out.push({
+        month:month+"-01",
+        date:toISO(_dsn(o,["date"]))||month+"-01",
+        acct:_dsn(o,["acct","code","customerCode"]),
+        shipper:_dsn(o,["custName","customer"])||rec.customer||"",
+        sales:"", debit:"",
+        amlAwb:awb, spAwb:_dsn(o,["track","awb","item","cn35"]), dhlAwb:"",
+        service:svcName, provider:prov,
+        dest:_dsn(o,["dest","country","port"]),
+        pkgs:num(_dsn(o,["pcs","qty","packages"]))||1,
+        gross:wt, vol:"", chargeable:cw,
+        freight:num(_dsn(o,["freight","billFreight","clearance","price"])),
+        extra:num(_dsn(o,["otherRaw","billOther","permit","surcharge","feeSgd"])),
+        gst:"",
+        total:num(o.amount),
+        awb2:_dsn(o,["track","awb","item","cn35"]),
+        product:prov, ptype:"", region:_dsn(o,["dest","country"]), wrange:"", dest2:"", dup:""
+      });
+    });
+  });
+  return out;
+}
+function dataShipmentAOA(month){
+  const rows=dataShipmentRows(month);
+  const aoa=[[],DS_COLS];
+  rows.forEach(r=>aoa.push([r.month,r.date,r.acct,r.shipper,r.sales,r.debit,r.amlAwb,r.spAwb,r.dhlAwb,r.service,r.provider,
+    r.dest,r.pkgs,r.gross,r.vol,r.chargeable,r.freight,r.extra,r.gst,m2(r.total),r.awb2,r.product,r.ptype,r.region,r.wrange,r.dest2,r.dup]));
+  return {aoa,rows};
+}
+function dsMonth(){ return dsState.month||prevMonthISO(); }
+const dsState={month:null};
+function setDsMonth(v){ dsState.month=v||prevMonthISO(); render(); }
+async function downloadDataShipment(){
+  const month=dsMonth(); const {aoa,rows}=dataShipmentAOA(month);
+  if(!rows.length){ alert("No saved records for "+month+".\n\nRun the services for that month and click “Save to records” first."); return; }
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Shipment Data_"+month.slice(0,4));
+  const by={}; rows.forEach(r=>{ (by[r.shipper||"—"]=by[r.shipper||"—"]||{})[r.service]=round2(((by[r.shipper||"—"]||{})[r.service]||0)+(num(r.total)||0)); });
+  const svcs=[...new Set(rows.map(r=>r.service))].sort();
+  const piv=[["Month",MON[(+month.slice(5,7))-1]+" "+month.slice(0,4)],[],["SUM of Total charge (without GST)","Service name"],
+    ["Shipper's name"].concat(svcs,["Grand Total"])];
+  Object.keys(by).sort().forEach(sh=>{ const r=[sh]; let t=0;
+    svcs.forEach(s=>{ const v=by[sh][s]; t+=v||0; r.push(v!=null?m2(v):null); }); r.push(m2(round2(t))); piv.push(r); });
+  const tot=["Grand Total"]; let g=0;
+  svcs.forEach(s=>{ const v=round2(rows.filter(r=>r.service===s).reduce((a,b)=>a+(num(b.total)||0),0)); g+=v; tot.push(m2(v)); });
+  tot.push(m2(round2(g))); piv.push(tot);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(piv),"Summary by customer");
+  const u8=XLSX.write(wb,{type:"array",bookType:"xlsx"});
+  saveU8(await xlsxStyleCells(u8,[{sheet:2,refs:[XLSX.utils.encode_col(svcs.length+1)+String(piv.length)]}]),
+    "Data Shipment_"+MON[(+month.slice(5,7))-1]+" "+month.slice(0,4)+".xlsx");
+}
+function renderDataShipment(v){
+  const month=dsMonth(), {rows}=dataShipmentAOA(month);
+  const recs=loadRecords().filter(r=>String(r.month||"").slice(0,7)===month);
+  const total=round2(rows.reduce((s,o)=>s+(num(o.total)||0),0));
+  const svcs=[...new Set(rows.map(r=>r.service))];
+  let h=`<div class="card"><div class="flexhead">
+    <div><div class="step">Data Shipment</div><h3>One row per shipment, every service</h3>
+      <p class="sub">Built from the runs saved in <b>Records</b> for the month you pick — same layout as the Monthly P&amp;L file.</p></div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <label>Month <input type="month" value="${esc(month)}" onchange="setDsMonth(this.value)"
+        style="padding:7px 9px;border:1px solid var(--line);border-radius:8px"></label>
+      <button class="dl" onclick="downloadDataShipment()">⭳ Download Data Shipment</button></div></div>
+    <div class="metrics">
+      <div class="metric accent"><div class="lbl">Shipments</div><div class="val">${rows.length.toLocaleString()}</div></div>
+      <div class="metric"><div class="lbl">Saved runs used</div><div class="val">${recs.length}</div></div>
+      <div class="metric"><div class="lbl">Services</div><div class="val">${svcs.length}</div></div>
+      <div class="metric good"><div class="lbl">Total charge (SGD)</div><div class="val" style="font-size:19px">${money(total)}</div></div>
+    </div>`;
+  if(!recs.length) h+=`<div class="banner warn">No saved records for ${esc(month)}. Run the services for that month and click <b>Save to records</b>, then come back.</div>`;
+  else{
+    h+=`<div class="banner ok">Using: ${recs.map(r=>esc(r.service)+" <span class='muted'>("+(r.lines||[]).length+" lines)</span>").join(" · ")}</div>`;
+    h+=`<div class="tbl-scroll" style="max-height:460px"><table><thead><tr>${DS_COLS.map(c=>`<th>${esc(String(c).replace(/\n/g," "))}</th>`).join("")}</tr></thead><tbody>`;
+    rows.slice(0,200).forEach(r=>{ h+=`<tr><td>${esc(r.month)}</td><td>${esc(r.date)}</td><td>${esc(r.acct)}</td><td>${esc(r.shipper)}</td>
+      <td></td><td></td><td>${esc(r.amlAwb)}</td><td>${esc(r.spAwb)}</td><td></td><td>${esc(r.service)}</td><td>${esc(r.provider)}</td>
+      <td>${esc(r.dest)}</td><td class="num">${r.pkgs}</td><td class="num">${r.gross}</td><td></td><td class="num">${r.chargeable}</td>
+      <td class="num">${r.freight!=null?r.freight:""}</td><td class="num">${r.extra!=null?r.extra:""}</td><td></td>
+      <td class="num">${r.total!=null?money(r.total):""}</td><td>${esc(r.awb2)}</td><td>${esc(r.product)}</td><td></td>
+      <td>${esc(r.region)}</td><td></td><td></td><td></td></tr>`; });
+    h+=`</tbody></table></div>`;
+    if(rows.length>200) h+=`<p class="muted">Showing 200 of ${rows.length} — the download has them all.</p>`;
+  }
+  v.innerHTML=h+`</div>`;
+}
 function renderNav(){
   const groups={};
   SERVICES.forEach(s=>{ (groups[s.group]=groups[s.group]||[]).push(s); });
@@ -3712,6 +3817,7 @@ function renderNav(){
   h+=`<div class="nav-item ${route.view==='records'?'active':''}" onclick="go('records')"><span class="ico">≣</span> Records</div>`;
   h+=`<div class="nav-item ${route.view==='batch'?'active':''}" onclick="go('batch')"><span class="ico">⇪</span> Batch upload</div>`;
   h+=`<div class="nav-item ${route.view==='ratehub'?'active':''}" onclick="go('ratehub')"><span class="ico">▤</span> Rate Cards</div>`;
+  h+=`<div class="nav-item ${route.view==='datashipment'?'active':''}" onclick="go('datashipment')"><span class="ico">⛴</span> Data Shipment</div>`;
   h+=`<div class="nav-group">Billing</div>`;
   SERVICES.forEach(s=>{
     const act=route.view==='service'&&route.id===s.id?'active':'';
@@ -3735,6 +3841,7 @@ function render(){
   if(route.view==="dashboard"){ setTitle("Dashboard","Overview"); renderDashboard(v); }
   else if(route.view==="records"){ setTitle("Records","History"); renderRecords(v); }
   else if(route.view==="ratehub"){ setTitle("Rate Cards","All rate cards"); renderRateHub(v); }
+  else if(route.view==="datashipment"){ setTitle("Data Shipment","All shipments, one row each"); renderDataShipment(v); }
   else if(route.view==="batch"){ renderBatch(v); }
   else if(route.view==="service"){ renderService(v, SVC[route.id]); }
   else if(route.view==="pricing"){ renderPricing(v, route.id||"pfedex"); }
