@@ -5002,14 +5002,12 @@ function persistRecordFields(r,patch){
   if(typeof SB!=="undefined" && SB){ SB.from("billing_records").update(patch).eq("id",r.id).then(({error})=>{ if(error){ console.error("record update failed",error); alert("Could not save the change to the shared database — check your connection and try again."); } }); }
   else if(typeof saveRecords==="function"){ saveRecords(loadRecords().map(x=>x.id===r.id?r:x)); }
 }
-function editRecordMonth(rid){
+function setRecordMonth(rid,val){
   const r=loadRecords().find(x=>x.id===rid); if(!r) return;
-  const cur=String(r.month||"");
-  const v=prompt("Billing month for this saved run — type it as YYYY-MM (e.g. 2026-07):\n\n"+r.service+(r.customer?(" · "+r.customer):"")+"\nSaved "+String(r.savedAt).slice(0,10)+", currently "+(cur||"(none)"), cur);
-  if(v===null) return;
-  const m=String(v).trim();
-  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)){ alert("“"+m+"” is not a valid month.\n\nUse YYYY-MM, for example 2026-07."); return; }
-  if(m===cur) return;
+  const cur=String(r.month||""), m=String(val||"").trim();
+  if(!m || m===cur){ render(); return; }
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(m)){ alert("“"+m+"” is not a valid month."); render(); return; }
+  if(!confirm("Move this saved run to "+MON[(+m.slice(5,7))-1]+" "+m.slice(0,4)+"?\n\n"+r.service+(r.customer?(" · "+r.customer):"")+"\nCurrently "+(cur||"(none)"))){ render(); return; }
   r.month=m;
   persistRecordFields(r,{month:m});
   logRateChange("_records","Saved run · "+r.service,"month",cur+" → "+m);
@@ -5047,7 +5045,7 @@ function renderRecords(v){
     && (!recFilter.customer||(r.customer||"—")===recFilter.customer));
   const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?"selected":""}>${esc(x)}</option>`).join("");
   let h=`<div class="card"><div class="flexhead"><div><div class="step">History</div>
-      <h3>Saved billing runs</h3><p class="sub">Shared across the team. Filter, re-download or delete. Click a <b>Month</b> or <b>Note</b> to edit it.</p></div>
+      <h3>Saved billing runs</h3><p class="sub">Shared across the team. Filter, re-download or delete. Pick a <b>Month</b> to correct it, or click a <b>Note</b> to edit.</p></div>
       <div style="display:flex;gap:8px"><button class="subtle sm dl" onclick="backupData()">⭳ Backup</button>
       <button class="subtle sm dl" onclick="restoreData()">⭱ Restore</button>
       <button class="danger sm" onclick="clearRecords()">Clear all</button></div></div>
@@ -5061,7 +5059,9 @@ function renderRecords(v){
       <th class="num">GP</th><th>Note</th><th></th></tr></thead><tbody>`;
   recs.forEach(r=>{
     h+=`<tr><td>${esc(r.savedAt.slice(0,16).replace("T"," "))}</td><td>${esc(r.service)}</td><td>${esc(r.customer||"—")}</td>
-      <td style="cursor:pointer;white-space:nowrap" onclick="editRecordMonth('${r.id}')" title="Click to correct the billing month">${esc(r.month)} <span class="muted">✎</span></td>
+      <td style="white-space:nowrap"><input type="month" value="${esc(String(r.month||"").slice(0,7))}" title="Pick the billing month"
+        onchange="setRecordMonth('${r.id}',this.value)"
+        style="padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;background:#fff"></td>
       <td class="num">${money(r.totals.amount)}</td><td class="num">${r.totals.shipments}</td>
       <td class="num">${r.totals.hasCost?money(r.totals.gp):"—"}</td>
       <td style="max-width:180px;cursor:pointer" onclick="editRecordNote('${r.id}')" title="Click to edit note">${esc(r.note||(r.totals&&r.totals.note)||"")||'<span class="muted">✎ add note</span>'}</td>
