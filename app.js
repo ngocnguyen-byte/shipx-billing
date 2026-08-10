@@ -3723,11 +3723,12 @@ const DS_COLS=["Month","Ship date","Customer's account","Shipper's name","Sales 
   "Gross weight","Volumetric weight","Charagable weight","Freight charge","Extra surchages (Duties & Taxes)","GST",
   "Total charge (without GST) (SGD)","AWB_v2","Product","Product type","Regions","Weight range","Destination","Check Dup"];
 /* which vendor actually carries each service */
-const DS_PROVIDER={ccl:"Linscomm",domsg:"Amilo MY",ioss:"Linscomm",linehaul:"Bpost",pickup:"SingPost",
-  ame:"Bpost",sp_dt:"Linscomm",sp_post:"SingPost",fedex:"FedEx"};
+const DS_PROVIDER={ccl:"Broadlink",domsg:"Amilo MY",ioss:"Linscomm",linehaul:"Bpost",pickup:"SingPost",
+  ame:"Bpost",sp_dt:"Linscomm",sp_post:"SingPost",fedex:"Bpost"};
 /* services billed to one fixed customer — the line's own "customer" is the consignee/route, not who we invoice */
 const DS_CUSTOMER={ccl:"SG LINK Export Import Company Limited", linehaul:"BPOST SINGAPORE PTE. LTD.",
   sp_dt:"SG LINK Export Import Company Limited"};
+const DS_DEST={ccl:"SG"};                        /* clearance happens in Singapore */
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
 function dataShipmentRows(month){
   const out=[];
@@ -3753,7 +3754,7 @@ function dataShipmentRows(month){
         sales:"", debit:"",
         amlAwb:amlAwb, spAwb:spAwb, dhlAwb:"",
         service:svcName, provider:prov,
-        dest:_dsn(o,["dest","country","port"]),
+        dest:DS_DEST[rec.serviceId]||_dsn(o,["dest","country","port"]),
         pkgs:num(_dsn(o,["pcs","qty","packages"]))||1,
         gross:wt, vol:"", chargeable:cw,
         freight:num(_dsn(o,["freight","billFreight","clearance","price"])),
@@ -3761,7 +3762,7 @@ function dataShipmentRows(month){
         gst:"",
         total:num(o.amount),
         awb2:spAwb||amlAwb,
-        product:prov, ptype:"", region:_dsn(o,["dest","country"]), wrange:"", dest2:"", dup:""
+        product:prov, ptype:"", region:DS_DEST[rec.serviceId]||_dsn(o,["dest","country"]), wrange:"", dest2:"", dup:""
       });
     });
   });
