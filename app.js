@@ -3737,7 +3737,10 @@ function dataShipmentRows(month){
     (rec.lines||[]).forEach(o=>{
       const wt=num(_dsn(o,["weight","weightKg","actual","charge"]));
       const cw=num(_dsn(o,["billW","chargeable","charge","weightKg","weight"]));
-      const awb=_dsn(o,["awb","track","ship","cn35","item","docket","ref","bag"]);
+      const _m=o._m||{};
+      /* AML AWB = our own Amilo Shipment ID; Service Provider AWB = the carrier's number */
+      const amlAwb=_dsn(o,["amilo"])||_m.amilo||_dsn(o,["awb","ship","docket","bag","ref"])||_dsn(o,["track","cn35","item"]);
+      const spAwb=_dsn(o,["track","cn35","item"])||_m.track||_dsn(o,["awb"]);
       out.push({
         month:month+"-01",
         date:toISO(_dsn(o,["date"]))||month+"-01",
@@ -3747,7 +3750,7 @@ function dataShipmentRows(month){
              || ((o.custName&&o.customer&&o.custName!==o.customer)?o.customer:""),
         shipper:DS_CUSTOMER[rec.serviceId]||_dsn(o,["custName","customer"])||rec.customer||"",
         sales:"", debit:"",
-        amlAwb:awb, spAwb:_dsn(o,["track","awb","item","cn35"]), dhlAwb:"",
+        amlAwb:amlAwb, spAwb:spAwb, dhlAwb:"",
         service:svcName, provider:prov,
         dest:_dsn(o,["dest","country","port"]),
         pkgs:num(_dsn(o,["pcs","qty","packages"]))||1,
@@ -3756,7 +3759,7 @@ function dataShipmentRows(month){
         extra:num(_dsn(o,["otherRaw","billOther","permit","surcharge","feeSgd"])),
         gst:"",
         total:num(o.amount),
-        awb2:_dsn(o,["track","awb","item","cn35"]),
+        awb2:spAwb||amlAwb,
         product:prov, ptype:"", region:_dsn(o,["dest","country"]), wrange:"", dest2:"", dup:""
       });
     });
