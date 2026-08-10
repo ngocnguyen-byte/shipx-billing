@@ -3764,6 +3764,9 @@ const DS_SALES="Company";                        /* the template's Sales name on
 /* which line fields hold the WEIGHTS for each service — "charge" means money on AME but kilos on Linehaul */
 const DS_WEIGHT={ame:["weightKg","weightKg"], fedex:["weight","billW"], linehaul:["actual","charge"],
   ccl:["weight","weight"], sp_post:["weight","weight"], domsg:["weight","weight"]};
+/* Total charge column — AME must equal "Total Chargeable" in its own billing output (same rounding) */
+const DS_TOTAL={ ame:o=>{ const wkg=(num(o.weightG)!=null)?(num(o.weightG)/1000):(num(o.weightKg)||0);   /* exact grams, not the rounded kg */
+    return round3(round2(num(o.pc)||0) + round2((num(o.kg)||0)*wkg) + wkg); } };
 const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty", domsg:"DOM",
   sp_post:o=>(o&&o.service)?String(o.service):"ePAC"};        /* each Singpost line carries its own service */
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
@@ -3813,7 +3816,7 @@ function dataShipmentRows(month){
         freight:num(_dsn(o,["freight","billFreight","clearance","price"])),
         extra:num(_dsn(o,["otherRaw","billOther","permit","surcharge","feeSgd"])),
         gst:"",
-        total:num(o.amount),
+        total:(DS_TOTAL[rec.serviceId]?DS_TOTAL[rec.serviceId](o):num(o.amount)),
         awb2:spAwb||amlAwb,
         product:prov, ptype:"", region:ov.dest||DS_DEST[rec.serviceId]||_dsn(o,["dest","country"]), wrange:"", dest2:"", dup:""
       });
