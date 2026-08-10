@@ -3813,7 +3813,7 @@ function dataShipmentRows(month){
         dest:ov.dest||DS_DEST[rec.serviceId]||_dsn(o,["dest","country","port"]),
         pkgs:num(_dsn(o,["pcs","qty","packages"]))||1,
         gross:wt, vol:"", chargeable:cw,
-        freight:num(_dsn(o,["freight","billFreight","clearance","price"])),
+        freight:"",                                 /* Freight charge stays blank — user, 2026-08-10 */
         extra:"",                                   /* Extra surcharges (Duties & Taxes) stays blank — user, 2026-08-10 */
         gst:"",
         total:(DS_TOTAL[rec.serviceId]?DS_TOTAL[rec.serviceId](o):num(o.amount)),
@@ -3916,7 +3916,7 @@ function dsSheetHtml(month,rows,recs){
     rows.slice(0,200).forEach(r=>{ h+=`<tr><td>${esc(r.month)}</td><td>${esc(r.date)}</td><td>${esc(r.acct)}</td><td>${esc(r.shipper)}</td>
       <td>${esc(r.sales)}</td><td></td><td>${esc(r.amlAwb)}</td><td>${esc(r.spAwb)}</td><td></td><td>${esc(r.service)}</td><td>${esc(r.provider)}</td>
       <td>${esc(r.dest)}</td><td class="num">${r.pkgs}</td><td class="num">${r.gross}</td><td></td><td class="num">${r.chargeable}</td>
-      <td class="num">${r.freight!=null?r.freight:""}</td><td></td><td></td>
+      <td></td><td></td><td></td>
       <td class="num">${r.total!=null?money(r.total):""}</td></tr>`; });
     h+=`</tbody></table></div>`;
     if(rows.length>200) h+=`<p class="muted">Showing 200 of ${rows.length} — the download has them all.</p>`;
