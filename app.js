@@ -3760,6 +3760,7 @@ const DS_CUSTOMER={ccl:"SG LINK Export Import Company Limited", linehaul:"BPOST 
   sp_dt:"SG LINK Export Import Company Limited", domsg:"SG LINK Export Import Company Limited"};
 const DS_DEST={ccl:"SG", sp_dt:"US", domsg:"SG"};  /* CCL clears in Singapore, Dom SG is domestic; D&T goes to the US */
 /* what the P&L calls the service, when it differs from the service name in the tool */
+const DS_SALES="Company";                        /* the template's Sales name on every row */
 const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty", domsg:"DOM",
   sp_post:o=>(o&&o.service)?String(o.service):"ePAC"};        /* each Singpost line carries its own service */
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
@@ -3799,7 +3800,7 @@ function dataShipmentRows(month){
              || ((o._m&&o._m.acct)?o._m.acct:"")
              || ((o.custName&&o.customer&&o.custName!==o.customer)?o.customer:""),
         shipper:ov.customer||DS_CUSTOMER[rec.serviceId]||_dsn(o,["custName","customer"])||rec.customer||"",
-        sales:"", debit:"",
+        sales:(ov.sales!=null&&ov.sales!=="")?ov.sales:DS_SALES, debit:"",
         amlAwb:amlAwb, spAwb:spAwb, dhlAwb:"",
         service:svcName, provider:prov,
         dest:ov.dest||DS_DEST[rec.serviceId]||_dsn(o,["dest","country","port"]),
@@ -3869,7 +3870,7 @@ function renderDataShipment(v){
       <b>Leave a box empty</b> to use the shipment's own value. The grey text is what the tool uses when the box is empty.</p></div>
     <button class="subtle sm" onclick="dsResetMap()">Reset all</button></div>
     <div class="tbl-scroll"><table><thead><tr><th>Service</th><th>Service name</th><th>Service provider name</th>
-      <th>Shipper's name (bill-to)</th><th>Destination</th></tr></thead><tbody>`;
+      <th>Shipper's name (bill-to)</th><th>Destination</th><th>Sales name</th></tr></thead><tbody>`;
   SERVICES.forEach(sv=>{
     const ov=dsMap(sv.id);
     const ph=(v)=>v?esc(String(v)):"from the shipment";
@@ -3882,7 +3883,8 @@ function renderDataShipment(v){
       <td>${box("service",ov.service,defSvc,150)}</td>
       <td>${box("provider",ov.provider,defProv,170)}</td>
       <td>${box("customer",ov.customer,DS_CUSTOMER[sv.id]||"",250)}</td>
-      <td>${box("dest",ov.dest,DS_DEST[sv.id]||"",90)}</td></tr>`;
+      <td>${box("dest",ov.dest,DS_DEST[sv.id]||"",90)}</td>
+      <td>${box("sales",ov.sales,DS_SALES,120)}</td></tr>`;
   });
   h+=`</tbody></table></div></div><div class="card">`;
   if(!recs.length) h+=`<div class="banner warn">No saved records for ${esc(month)}. Run the services for that month and click <b>Save to records</b>, then come back.</div>`;
@@ -3890,7 +3892,7 @@ function renderDataShipment(v){
     h+=`<div class="banner ok">Using: ${recs.map(r=>esc(r.service)+" <span class='muted'>("+(r.lines||[]).length+" lines)</span>").join(" · ")}</div>`;
     h+=`<div class="tbl-scroll" style="max-height:460px"><table><thead><tr>${DS_COLS.map(c=>`<th>${esc(String(c).replace(/\n/g," "))}</th>`).join("")}</tr></thead><tbody>`;
     rows.slice(0,200).forEach(r=>{ h+=`<tr><td>${esc(r.month)}</td><td>${esc(r.date)}</td><td>${esc(r.acct)}</td><td>${esc(r.shipper)}</td>
-      <td></td><td></td><td>${esc(r.amlAwb)}</td><td>${esc(r.spAwb)}</td><td></td><td>${esc(r.service)}</td><td>${esc(r.provider)}</td>
+      <td>${esc(r.sales)}</td><td></td><td>${esc(r.amlAwb)}</td><td>${esc(r.spAwb)}</td><td></td><td>${esc(r.service)}</td><td>${esc(r.provider)}</td>
       <td>${esc(r.dest)}</td><td class="num">${r.pkgs}</td><td class="num">${r.gross}</td><td></td><td class="num">${r.chargeable}</td>
       <td class="num">${r.freight!=null?r.freight:""}</td><td class="num">${r.extra!=null?r.extra:""}</td><td></td>
       <td class="num">${r.total!=null?money(r.total):""}</td><td>${esc(r.awb2)}</td><td>${esc(r.product)}</td><td></td>
