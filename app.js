@@ -3725,6 +3725,9 @@ const DS_COLS=["Month","Ship date","Customer's account","Shipper's name","Sales 
 /* which vendor actually carries each service */
 const DS_PROVIDER={ccl:"Linscomm",domsg:"Amilo MY",ioss:"Linscomm",linehaul:"Bpost",pickup:"SingPost",
   ame:"Bpost",sp_dt:"Linscomm",sp_post:"SingPost",fedex:"FedEx"};
+/* services billed to one fixed customer — the line's own "customer" is the consignee/route, not who we invoice */
+const DS_CUSTOMER={ccl:"SG LINK Export Import Company Limited", linehaul:"BPOST SINGAPORE PTE. LTD.",
+  sp_dt:"SG LINK Export Import Company Limited"};
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
 function dataShipmentRows(month){
   const out=[];
@@ -3739,7 +3742,7 @@ function dataShipmentRows(month){
         month:month+"-01",
         date:toISO(_dsn(o,["date"]))||month+"-01",
         acct:_dsn(o,["acct","code","customerCode"]),
-        shipper:_dsn(o,["custName","customer"])||rec.customer||"",
+        shipper:DS_CUSTOMER[rec.serviceId]||_dsn(o,["custName","customer"])||rec.customer||"",
         sales:"", debit:"",
         amlAwb:awb, spAwb:_dsn(o,["track","awb","item","cn35"]), dhlAwb:"",
         service:svcName, provider:prov,
