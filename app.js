@@ -3723,7 +3723,7 @@ const DS_COLS=["Month","Ship date","Customer's account","Shipper's name","Sales 
   "Gross weight","Volumetric weight","Charagable weight","Freight charge","Extra surchages (Duties & Taxes)","GST",
   "Total charge (without GST) (SGD)","AWB_v2","Product","Product type","Regions","Weight range","Destination","Check Dup"];
 /* which vendor actually carries each service */
-const DS_PROVIDER={ccl:"Broadlink",domsg:"Amilo MY",ioss:"Ship24",pickup:"SingPost",
+const DS_PROVIDER={ccl:"Broadlink",domsg:"J&T",ioss:"Ship24",pickup:"SingPost",
   ame:"Bpost",sp_dt:"Singpost",sp_post:"SingPost",fedex:"Bpost",
   /* linehaul: the airline decides — MH flights are MH, everything else is APS */
   linehaul:o=>/^MH/i.test(String((o&&o.airline)||"").trim())?"MH":"APS"};
@@ -3732,7 +3732,7 @@ const DS_CUSTOMER={ccl:"SG LINK Export Import Company Limited", linehaul:"BPOST 
   sp_dt:"SG LINK Export Import Company Limited", domsg:"SG LINK Export Import Company Limited"};
 const DS_DEST={ccl:"SG", sp_dt:"US", domsg:"SG"};  /* CCL clears in Singapore, Dom SG is domestic; D&T goes to the US */
 /* what the P&L calls the service, when it differs from the service name in the tool */
-const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty"};
+const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty", domsg:"DOM"};
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
 function dataShipmentRows(month){
   const out=[];
