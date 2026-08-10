@@ -51,6 +51,12 @@
   button.subtle{ background:var(--light); color:var(--navy2); border:1px solid var(--line); }
   button.sm{ padding:6px 12px; font-size:12.5px; }
   button.danger{ background:#fff; color:var(--danger); border:1.5px solid #e3a49c; }
+  /* download buttons — always green so they stand out wherever they appear */
+  button.dl, button.ghost.dl, button.subtle.dl{
+    background:var(--ok) !important; color:#fff !important; border:1.5px solid #17683a !important;
+    font-weight:700; box-shadow:0 2px 8px rgba(30,125,70,.28);
+  }
+  button.dl:hover:not(:disabled){ filter:brightness(1.10); }
 
   .drop{ border:2px dashed var(--accent2); border-radius:var(--radius); background:#f7fbff; padding:26px; text-align:center;
     cursor:pointer; transition:.15s; }

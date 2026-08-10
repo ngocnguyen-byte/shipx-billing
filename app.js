@@ -1680,8 +1680,8 @@ function renderDocketResults(id){
     <div><div class="step">Summary</div><h3>Singpost July run — ${hasSp?"ePAC + Speedpost":"ePAC"}</h3>
       <p class="sub">Both services reconciled against SingPost/Linscomm, then billed to SG Link.</p></div>
     <div style="display:flex;gap:8px">
-      <button class="ghost" onclick="downloadDocketRecon('${id}')">⭳ Reconciliation</button>
-      <button class="ghost" onclick="downloadDocketSGL('${id}')">⭳ SG Link billing</button></div></div>
+      <button class="ghost dl" onclick="downloadDocketRecon('${id}')">⭳ Reconciliation</button>
+      <button class="ghost dl" onclick="downloadDocketSGL('${id}')">⭳ SG Link billing</button></div></div>
     <div class="tbl-scroll"><table><thead><tr><th>Service</th><th class="num">Lines</th><th class="num">Articles</th>
       <th class="num">Weight (kg)</th><th class="num">Vendor billed</th><th class="num">Rate-card expected</th>
       <th class="num">Variance</th><th class="num">Billing to SG Link</th><th class="num">Margin</th></tr></thead><tbody>
@@ -1749,7 +1749,7 @@ function renderDocketResults(id){
   h+=`</div>`;
   h+=`<div class="card"><div class="flexhead">
     <div><div class="step">Part 1 · ePAC</div><h3>Is Linscomm's rate correct?</h3></div>
-    <button class="ghost" onclick="downloadDocketRecon('${id}')">⭳ Download reconciliation</button></div>
+    <button class="ghost dl" onclick="downloadDocketRecon('${id}')">⭳ Download reconciliation</button></div>
     <div class="metrics">
     <div class="metric accent"><div class="lbl">Dockets billed</div><div class="val">${r.invDockets}</div></div>
     <div class="metric"><div class="lbl">Matched lines</div><div class="val">${r.rows.length}</div></div>
@@ -1766,7 +1766,7 @@ function renderDocketResults(id){
   if(r.review.length) h+=`<div class="banner warn">⚠ ${r.review.length} line(s) couldn't be matched/coded (listed in the reconciliation download).</div>`;
   h+=`</div>`;
   h+=`<div class="card"><div class="flexhead"><div><div class="step">Part 1 · ePAC</div><h3>ePAC billing to SG Link</h3></div>
-    <button class="ghost" onclick="downloadDocketSGL('${id}')">⭳ Download SG Link billing</button></div>
+    <button class="ghost dl" onclick="downloadDocketSGL('${id}')">⭳ Download SG Link billing</button></div>
     <div class="metrics">
     <div class="metric accent"><div class="lbl">SG Link billing</div><div class="val">${money(r.sglTot)}</div></div>
     <div class="metric good"><div class="lbl">Margin over Linscomm (S$)</div><div class="val">${money(r.margin)}</div></div>
@@ -2261,8 +2261,8 @@ function prFdxBuildHtml(){
       <b>⚠ Note:</b> these rates <b>exclude all surcharges</b> (fuel, demand, U.S. inbound processing, etc.). See the <b>Surcharge</b> sheet in the downloaded rate card.</div>
     <div style="margin:12px 0 4px">
       <div style="font-weight:700;margin-bottom:6px">Download File</div>
-      <button class="primary" onclick="prDlFdxCard()">⭳ Customer rate card (Excel)</button>
-      <button class="subtle" onclick="prDlFdxCalc()">⭳ CALC with formulas (to check)</button>
+      <button class="primary dl" onclick="prDlFdxCard()">⭳ Customer rate card (Excel)</button>
+      <button class="subtle dl" onclick="prDlFdxCalc()">⭳ CALC with formulas (to check)</button>
       <input type="text" placeholder="filter country…" style="margin-left:14px" oninput="PRS.pfedex.filter=this.value;prRefreshTbl('prfdxprev',prFdxPrevRows())">
     </div>${prSvcTCHtml("fedex")}</div>`;
   h+=`<div class="card"><h3>Preview — ${esc((_PRC_FDXPROD.find(x=>x[0]===prod)||[])[1]||prod)} · margin ${round2(prNum(p.margin)*100)}%</h3>
@@ -2388,9 +2388,9 @@ function prAmeBuildHtml(id){
       return `<p class="sub">Current pickup fee ex${esc(P.orig)}: <b style="color:var(--pink)">${parts.length?esc(parts.join(" · ")):"0"} ${esc(String(pr[7]||""))}</b> — included in the ${pu==="both"?"With-Pickup sheet":"rates"}; edit it in Cost cards → Pick Up Charges.</p>`;
     })():``}
     <div style="margin:12px 0 4px">
-      <button class="primary" onclick="prDlAmeCard()">⭳ Customer rate card (Excel)</button>
-      <button class="subtle" onclick="prDlAmeNetCost()">⭳ Net cost (0% margin)</button>
-      ${isAmd?``:`<button class="subtle" onclick="prDlAmeCalc()">⭳ CALC with formulas (to check)</button>`}
+      <button class="primary dl" onclick="prDlAmeCard()">⭳ Customer rate card (Excel)</button>
+      <button class="subtle dl" onclick="prDlAmeNetCost()">⭳ Net cost (0% margin)</button>
+      ${isAmd?``:`<button class="subtle dl" onclick="prDlAmeCalc()">⭳ CALC with formulas (to check)</button>`}
       <input type="text" placeholder="filter destination…" style="margin-left:14px" value="${esc(P.filter||'')}" oninput="PRS['${id}'].filter=this.value;render()">
     </div>${prSvcTCHtml(isAmd?"amd":"ame")}</div>`;
   h+=`<div class="card"><h3>Preview — ${esc(oLbl)} · ${esc(P.typ)} · ${rows.length} destinations · margin ${P.margin}% · ${esc(oc)}${pu==='without'?' · no pickup':''}</h3>
@@ -2694,7 +2694,7 @@ function prAmeCostHtml(id){
       <label>Origin<br><input type="text" disabled style="width:74px;font-weight:600" value="ex${esc(orig)}"></label>
       <input type="text" placeholder="filter destination…" value="${esc(P.filter||"")}" oninput="PRS['${id}'].filter=this.value;render()">
       <button class="primary sm" onclick="prAmeRowsSave()">✔ Save</button>
-      <button class="subtle sm" onclick="prAmeDlRows()">⭳ Download</button>
+      <button class="subtle sm dl" onclick="prAmeDlRows()">⭳ Download</button>
       <button class="subtle sm" onclick="prSet(_prnsK('rows_')+'${orig}',null);render()">Reset to built-in</button>
     </div>
     <div class="tbl-scroll" style="max-height:440px"><table id="pramerows"><thead>
@@ -2774,7 +2774,7 @@ function prAmeCostHtml(id){
       <label>Route<br><select id="prlmRt"><option value="">Auto (from names)</option><option value="Hub">Via Hub</option><option value="Direct">Direct</option></select></label>
       <label>Currency<br><select id="prlmCur"><option value="">Keep as-is</option>${prAmeCurList().map(c=>`<option>${c}</option>`).join("")}</select></label>`}
       <button class="subtle sm" onclick="prAmeTblAddOpen('${id}','lm')">＋ Add line</button>
-      <button class="subtle sm" onclick="prAmeDlLm()">⭳ Download rates</button>
+      <button class="subtle sm dl" onclick="prAmeDlLm()">⭳ Download rates</button>
       <button class="subtle sm" onclick="prSet(_prnsK('combined'),null);render()">Reset to built-in</button>
       <input type="text" placeholder="filter destination / ISO…" value="${esc(P.lmf||'')}" oninput="PRS['${id}'].lmf=this.value;render()">
     </div>
@@ -2961,8 +2961,8 @@ function prQsmBuildHtml(){
         <label>Margin %<br><input type="number" step="0.1" style="width:80px" value="${P.margin}" onchange="prSetS('pqsm','margin',Number(this.value))"></label>
         <label>Pickup /pc<br><input type="number" step="0.01" style="width:80px" value="${P.pickup}" onchange="prSetS('pqsm','pickup',Number(this.value))"></label>
         <label>Customer (file name)<br><input type="text" style="width:160px" placeholder="e.g. SG Link" value="${esc(P.custName||"")}" onchange="prInp('pqsm','custName',this.value)"></label>
-        <button class="primary" onclick="prDlEpacCard()">⭳ Customer rate card</button>
-        <button class="subtle" onclick="prDlEpacCalc()">⭳ CALC with formulas</button>
+        <button class="primary dl" onclick="prDlEpacCard()">⭳ Customer rate card</button>
+        <button class="subtle dl" onclick="prDlEpacCalc()">⭳ CALC with formulas</button>
       </div>${prSvcTCHtml("qsm")}<div style="display:none">
       </div>
       <div class="tbl-scroll" style="max-height:460px;margin-top:12px"><table><thead><tr><th>Zone</th><th>Destination</th><th>Code</th><th class="num">Cost item</th><th class="num">Cost kg</th><th class="num">Sell item S$</th><th class="num">Sell kg S$</th><th class="num">Max Weight (KG)</th></tr></thead><tbody>
@@ -2975,8 +2975,8 @@ function prQsmBuildHtml(){
     <div class="filters" style="display:flex;gap:10px;align-items:flex-end">
       <label>Margin %<br><input type="number" step="0.1" style="width:80px" value="${P.spdMargin}" onchange="prSetS('pqsm','spdMargin',Number(this.value))"></label>
       <label>Customer (file name)<br><input type="text" style="width:160px" placeholder="e.g. Bpost" value="${esc(P.custName||"")}" onchange="prInp('pqsm','custName',this.value)"></label>
-      <button class="primary" onclick="prDlSpdCard()">⭳ Customer rate card</button>
-      <button class="subtle" onclick="prDlSpdCalc()">⭳ CALC with formulas</button>
+      <button class="primary dl" onclick="prDlSpdCard()">⭳ Customer rate card</button>
+      <button class="subtle dl" onclick="prDlSpdCalc()">⭳ CALC with formulas</button>
     </div>${prSvcTCHtml("qsm")}<div style="display:none">
     </div>
     <div class="tbl-scroll" style="max-height:460px;margin-top:12px"><table><thead><tr><th>Weight ≤ kg</th>${res.countries.map(c=>`<th class="num">${esc(c)}</th>`).join("")}</tr></thead><tbody>
@@ -3675,10 +3675,10 @@ function renderBatchResults(){
     if(r.empty){ h+=`<tr><td>${esc(nm)}</td><td class="num">${(r.files||[]).length}</td><td colspan="3" class="muted">${esc(r.note||"no rows")}</td><td></td></tr>`; return; }
     let btns="";
     if(r.kind==="dockets"){
-      btns=`<button class="subtle sm" onclick="downloadDocketRecon('sp_dockets')">⭳ Reconciliation</button> <button class="subtle sm" onclick="downloadDocketSGL('sp_dockets')">⭳ SG Link billing</button>`;
+      btns=`<button class="subtle sm dl" onclick="downloadDocketRecon('sp_dockets')">⭳ Reconciliation</button> <button class="subtle sm dl" onclick="downloadDocketSGL('sp_dockets')">⭳ SG Link billing</button>`;
     } else {
-      if(svc.buildRecon) btns+=`<button class="subtle sm" onclick="downloadRecon('${r.svcId}')">⭳ Output 1</button> `;
-      btns+=`<button class="subtle sm" onclick="downloadResult('${r.svcId}')">⭳ Billing</button>`;
+      if(svc.buildRecon) btns+=`<button class="subtle sm dl" onclick="downloadRecon('${r.svcId}')">⭳ Output 1</button> `;
+      btns+=`<button class="subtle sm dl" onclick="downloadResult('${r.svcId}')">⭳ Billing</button>`;
     }
     btns+=` <button class="subtle sm" onclick="go('service','${r.svcId}')">Open →</button>`;
     h+=`<tr><td>${esc(nm)}</td><td class="num">${(r.files||[]).length}</td><td class="num">${r.shipments||0}</td>
@@ -3744,7 +3744,7 @@ function renderRateHub(v){
     cards.forEach(c=>{ const _u=rateUpdatedInfo(s.id,c.id,c.label,s.name);
       h+=`<tr><td>${esc(s.name)}</td><td>${esc(c.label)}</td><td class="num">${c.n}</td>
       <td class="muted" style="white-space:nowrap">${_u?(esc(fmtWhen(_u.at))+(_u.by?` · <span class="muted">${esc(_u.by)}</span>`:"")):`<span style="opacity:.55">— built-in</span>`}</td>
-      <td style="white-space:nowrap"><button class="subtle sm" onclick="downloadRateCard('${s.id}'${c.id?(",'"+c.id+"'"):""})">⭳ Download</button>
+      <td style="white-space:nowrap"><button class="subtle sm dl" onclick="downloadRateCard('${s.id}'${c.id?(",'"+c.id+"'"):""})">⭳ Download</button>
       <button class="subtle sm" onclick="viewRates('${s.id}')">View / Edit →</button></td></tr>`; });
   });
   h+=`</tbody></table></div></div>`;
@@ -3910,7 +3910,7 @@ function fedexCostTabHtml(){
     h+=`<div class="flexhead" style="border-top:1px solid var(--line);padding:10px 0 4px">
       <div><b>${esc(k)}</b> — ${esc(desc)}<br><span class="muted">${meta}</span></div>
       <div style="display:flex;gap:8px;align-items:flex-start">
-        <button class="subtle sm" onclick="fedexCostDownload('${esc(k)}')">⭳ Download</button>
+        <button class="subtle sm dl" onclick="fedexCostDownload('${esc(k)}')">⭳ Download</button>
         <label class="subtle sm" style="cursor:pointer;border:1px solid var(--line);padding:6px 10px;border-radius:8px">Load file…<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="fedexCostLoad('${esc(k)}',this)"></label>
         ${builtin?`<button class="subtle sm" onclick="if(confirm('Reset ${esc(k)} to the built-in card?')){saveRatesFor('fedexcost:${esc(k)}',{__none:1});if(state.fedex&&state.fedex.result)reprocess('fedex');render();}">Reset</button>`
                  :`<button class="subtle sm" onclick="fedexCostRemove('${esc(k)}')">✕ Remove</button>`}
@@ -3981,7 +3981,7 @@ function fedexReconCardHtml(id,R){
   };
   let h=`<div class="card" style="border-color:var(--accent2)"><div class="flexhead">
     <div><div class="step">Reconciliation with FedEx</div><h3>Did FedEx charge us correctly?</h3></div>
-    <button class="ghost" onclick="downloadRecon('${id}')">⭳ Download reconciliation (incl. GP)</button></div>
+    <button class="ghost dl" onclick="downloadRecon('${id}')">⭳ Download reconciliation (incl. GP)</button></div>
     <div class="metrics">
       <div class="metric"><div class="lbl">AWBs checked</div><div class="val">${R.rows.length}</div></div>
       <div class="metric good"><div class="lbl">OK</div><div class="val">${c.OK||0}</div></div>
@@ -4221,7 +4221,7 @@ function rateCardButtons(id,cardId){
       <button class="subtle sm" onclick="cancelRateEdit(${arg})">Cancel</button>`;
   return `<button class="ghost sm" onclick="startRateEdit(${arg})">✎ Edit</button>
     <button class="subtle sm" onclick="rateFileInput${N}(${arg})">Load file…</button>
-    <button class="subtle sm" onclick="downloadRateCard(${arg})">⭳ Download</button>
+    <button class="subtle sm dl" onclick="downloadRateCard(${arg})">⭳ Download</button>
     <button class="subtle sm" onclick="resetRate${N}(${arg})">Reset</button>`;
 }
 function renderRateTable(id){
@@ -4622,7 +4622,7 @@ function lhResolveCardHtml(id,res,st){
     <div style="display:flex;gap:8px">
       <button class="sm" onclick="rerun('${id}')">⟳ Recalculate with my answers</button>
       <button class="subtle sm" onclick="clearLhFixes('${id}')">Clear answers</button>
-      <button class="subtle sm" onclick="downloadReview('${id}')">⭳ Download review list</button>
+      <button class="subtle sm dl" onclick="downloadReview('${id}')">⭳ Download review list</button>
     </div></div>
     <div class="tbl-scroll"><table><thead><tr><th>CN35</th><th>Shipment details (from your input)</th><th>Why it is flagged</th><th style="min-width:290px">Your answer</th></tr></thead><tbody>`;
   res.review.forEach((rv,i)=>{
@@ -4673,7 +4673,7 @@ function renderResult(id){
   if(res.recon){
     h+=`<div class="card" style="border-color:var(--accent2)"><div class="flexhead">
       <div><div class="step">Output 1 · Reconciliation with vendor</div><h3>${esc(res.recon.title)}</h3></div>
-      ${svc.buildRecon?`<button class="ghost" onclick="downloadRecon('${id}')">⭳ Download reconciliation</button>`:""}
+      ${svc.buildRecon?`<button class="ghost dl" onclick="downloadRecon('${id}')">⭳ Download reconciliation</button>`:""}
       </div><div class="metrics">`;
     res.recon.metrics.forEach(m=>{
       h+=`<div class="metric"><div class="lbl">${esc(m.label)}</div><div class="val" style="font-size:19px">${m.money?money(m.value,cur):esc(m.value)}</div></div>`;
@@ -4693,7 +4693,7 @@ function renderResult(id){
       <div style="display:flex;gap:8px">
         <button class="sm" onclick="rerun('${id}')">⟳ Recalculate with my answers</button>
         <button class="subtle sm" onclick="clearFedexFixes('${id}')">Clear answers</button>
-        <button class="subtle sm" onclick="downloadReview('${id}')">⭳ Download review list</button>
+        <button class="subtle sm dl" onclick="downloadReview('${id}')">⭳ Download review list</button>
       </div></div>
       <div class="tbl-scroll" style="max-height:380px"><table><thead><tr><th>AWB</th><th>Ref / Sender</th><th>Reason</th><th style="min-width:240px">Your answer</th></tr></thead><tbody>`;
     res.review.slice(0,200).forEach(rv=>{
@@ -4723,7 +4723,7 @@ function renderResult(id){
   h+=`<div class="card"><div class="flexhead">
     <div><div class="step">${res.recon?'Output 2 · ':'Step 2 · Review output'}</div><h3>Customer billing</h3></div>
     <div style="display:flex;gap:8px">
-      <button class="ghost" onclick="${svc.billingViaCustomerFiles?`downloadAllCustomerFiles('${id}')`:`downloadResult('${id}')`}">⭳ Download billing${svc.billingViaCustomerFiles?' (file per customer)':''}</button>
+      <button class="ghost dl" onclick="${svc.billingViaCustomerFiles?`downloadAllCustomerFiles('${id}')`:`downloadResult('${id}')`}">⭳ Download billing${svc.billingViaCustomerFiles?' (file per customer)':''}</button>
       <button onclick="saveToRecords('${id}')">✔ Save to records</button>
     </div></div>`;
 
@@ -4745,7 +4745,7 @@ function renderResult(id){
     h+=`<div class="banner warn">⚠ <b>${res.review.length} row(s) need review</b> — excluded from the total:<br>`
       + res.review.slice(0,8).map(r=>`• ${esc(r.ship||r.track||r.awb||r.ref||"?")} — ${esc(r.reason)}`).join("<br>")
       + (res.review.length>8?`<br><i>…and ${res.review.length-8} more</i>`:"")
-      + `<br><button class="sm" style="margin-top:9px" onclick="downloadReview('${id}')">⭳ Download review list (.xlsx)</button></div>`;
+      + `<br><button class="sm dl" style="margin-top:9px" onclick="downloadReview('${id}')">⭳ Download review list (.xlsx)</button></div>`;
   }
 
   // negative-GP warning — list the shipments, click to filter
@@ -4804,8 +4804,8 @@ function renderResult(id){
     const accts=[...new Set(res.lines.map(o=>o[key]).filter(Boolean))].filter(a=>!(svc.customerFileExclude||[]).includes(a));
     h+=`<div class="card"><div class="flexhead"><div><div class="step">Output · Per-customer files</div><h3>Billing file for each customer</h3>
       <p class="sub">Same format as the Customer billing output — one file per customer.</p></div>
-      <button onclick="downloadAllCustomerFiles('${id}')">⭳ Download all (${accts.length} files)</button></div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">${accts.map(a=>`<button class="subtle sm" onclick="downloadCustomerFile('${id}','${esc(a)}')">⭳ ${esc(a)}</button>`).join("")}</div></div>`;
+      <button class="dl" onclick="downloadAllCustomerFiles('${id}')">⭳ Download all (${accts.length} files)</button></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${accts.map(a=>`<button class="subtle sm dl" onclick="downloadCustomerFile('${id}','${esc(a)}')">⭳ ${esc(a)}</button>`).join("")}</div></div>`;
   }
 
   // per-customer breakdown / summary
@@ -5038,7 +5038,7 @@ function renderRecords(v){
   const all=loadRecords();
   if(!all.length){ v.innerHTML=`<div class="card"><div class="empty"><div class="big">≣</div>
     No saved runs yet.<br>Run a service and click <b>Save to records</b> to build history.<br><br>
-    <button class="subtle sm" onclick="restoreData()">⭱ Restore from backup file</button></div></div>`; return; }
+    <button class="subtle sm dl" onclick="restoreData()">⭱ Restore from backup file</button></div></div>`; return; }
   const services=[...new Set(all.map(r=>r.service))].sort();
   const months=[...new Set(all.map(r=>r.month))].sort().reverse();
   const customers=[...new Set(all.map(r=>r.customer||"—"))].sort();
@@ -5048,8 +5048,8 @@ function renderRecords(v){
   const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?"selected":""}>${esc(x)}</option>`).join("");
   let h=`<div class="card"><div class="flexhead"><div><div class="step">History</div>
       <h3>Saved billing runs</h3><p class="sub">Shared across the team. Filter, re-download or delete. Click a <b>Month</b> or <b>Note</b> to edit it.</p></div>
-      <div style="display:flex;gap:8px"><button class="subtle sm" onclick="backupData()">⭳ Backup</button>
-      <button class="subtle sm" onclick="restoreData()">⭱ Restore</button>
+      <div style="display:flex;gap:8px"><button class="subtle sm dl" onclick="backupData()">⭳ Backup</button>
+      <button class="subtle sm dl" onclick="restoreData()">⭱ Restore</button>
       <button class="danger sm" onclick="clearRecords()">Clear all</button></div></div>
     <div class="filters">
       <label>Service <select onchange="setRecFilter('service',this.value)"><option value="">All</option>${opt(services,recFilter.service)}</select></label>
@@ -5157,7 +5157,7 @@ function renderDashboard(v){
   h+=`<div class="card"><div class="flexhead"><div><div class="step">Month-end</div><h3>Month-end pack</h3>
     <p class="sub">One Excel with every service's latest saved run for the month — totals, GP, by customer.</p></div>
     <div class="filters" style="margin:0"><select id="mepMonth">${mepMonths.map(m=>`<option>${esc(m)}</option>`).join("")}</select>
-    <button onclick="monthEndPack(document.getElementById('mepMonth').value)">⭳ Build pack</button></div></div></div>`;
+    <button class="dl" onclick="monthEndPack(document.getElementById('mepMonth').value)">⭳ Build pack</button></div></div></div>`;
 
   // by service
   const bySvc={};
