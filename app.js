@@ -3723,19 +3723,21 @@ const DS_COLS=["Month","Ship date","Customer's account","Shipper's name","Sales 
   "Gross weight","Volumetric weight","Charagable weight","Freight charge","Extra surchages (Duties & Taxes)","GST",
   "Total charge (without GST) (SGD)","AWB_v2","Product","Product type","Regions","Weight range","Destination","Check Dup"];
 /* which vendor actually carries each service */
-const DS_PROVIDER={ccl:"Broadlink",domsg:"Amilo MY",ioss:"Linscomm",pickup:"SingPost",
-  ame:"Bpost",sp_dt:"Linscomm",sp_post:"SingPost",fedex:"Bpost",
+const DS_PROVIDER={ccl:"Broadlink",domsg:"Amilo MY",ioss:"Ship24",pickup:"SingPost",
+  ame:"Bpost",sp_dt:"Singpost",sp_post:"SingPost",fedex:"Bpost",
   /* linehaul: the airline decides — MH flights are MH, everything else is APS */
   linehaul:o=>/^MH/i.test(String((o&&o.airline)||"").trim())?"MH":"APS"};
 /* services billed to one fixed customer — the line's own "customer" is the consignee/route, not who we invoice */
 const DS_CUSTOMER={ccl:"SG LINK Export Import Company Limited", linehaul:"BPOST SINGAPORE PTE. LTD.",
   sp_dt:"SG LINK Export Import Company Limited"};
 const DS_DEST={ccl:"SG"};                        /* clearance happens in Singapore */
+/* what the P&L calls the service, when it differs from the service name in the tool */
+const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty"};
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
 function dataShipmentRows(month){
   const out=[];
   loadRecords().filter(r=>String(r.month||"").slice(0,7)===month).forEach(rec=>{
-    const svcName=String(rec.service||"").split(" — ")[0].split(" (")[0];
+    const svcName=DS_SERVICE[rec.serviceId]||String(rec.service||"").split(" — ")[0].split(" (")[0];
     const provOf=DS_PROVIDER[rec.serviceId];
     (rec.lines||[]).forEach(o=>{
       const prov=(typeof provOf==="function")?provOf(o):(provOf||"");
