@@ -3787,15 +3787,23 @@ const dsDefProvider=(id,o)=>{ const d=DS_PROVIDER[id]; return (typeof d==="funct
 const DS_PICKUP={service:"AME", provider:"Bpost", dest:"SG", tag:"Pick up FS",
   names:{"Bpost":"BPOST SINGAPORE PTE. LTD."}};
 function dsManualRows(){ const r=loadSavedRates("datashipment:manual"); return Array.isArray(r)?r:[]; }
-function dsSaveManual(rows){ saveRatesFor("datashipment:manual",rows); }
-function dsAddManual(){ const rows=dsManualRows().slice();
-  rows.push({month:dsMonth(),shipper:"Urban Dosing Grounds",service:DS_PICKUP.service,provider:DS_PICKUP.provider,
-    dest:DS_PICKUP.dest,tag:DS_PICKUP.tag,total:""});
-  dsSaveManual(rows); render(); }
-function dsSetManual(i,field,val){ const rows=dsManualRows().slice(); if(!rows[i]) return;
-  rows[i]=Object.assign({},rows[i],{[field]:val}); dsSaveManual(rows); if(field!=="total") render(); }
-function dsDelManual(i){ const rows=dsManualRows().slice(); if(!rows[i]) return;
-  if(!confirm("Remove this row?")) return; rows.splice(i,1); dsSaveManual(rows); render(); }
+function dsSaveManualStore(rows){ saveRatesFor("datashipment:manual",rows); }
+let dsManualDraft=null;                                   /* edits live here until you press Save */
+function dsManualCur(){ return dsManualDraft||dsManualRows(); }
+function dsDraft(){ if(!dsManualDraft) dsManualDraft=dsManualRows().map(r=>Object.assign({},r)); return dsManualDraft; }
+function dsAddManual(){ dsDraft().push({month:dsMonth(),shipper:"Urban Dosing Grounds",service:DS_PICKUP.service,
+    provider:DS_PICKUP.provider,dest:DS_PICKUP.dest,tag:DS_PICKUP.tag,total:""}); render(); }
+function dsSetManual(i,field,val){ const rows=dsDraft(); if(!rows[i]) return; rows[i][field]=val; }   /* no re-render: keeps your cursor */
+function dsDelManual(i){ const rows=dsDraft(); if(!rows[i]) return;
+  if(!confirm("Remove this row?")) return; rows.splice(i,1); render(); }
+function dsSaveManual(){
+  const rows=dsManualCur().filter(r=>r && (String(r.shipper||"").trim()||num(r.total)!=null));
+  const bad=rows.filter(r=>num(r.total)==null);
+  if(bad.length && !confirm(bad.length+" row(s) have no total charge and will be ignored in the sheet.\n\nSave anyway?")) return;
+  dsSaveManualStore(rows); dsManualDraft=null; render();
+  alert("Saved "+rows.length+" manual row(s).");
+}
+function dsDiscardManual(){ dsManualDraft=null; render(); }
 function dataShipmentRows(month){
   const out=[];
   loadRecords().filter(r=>String(r.month||"").slice(0,7)===month).forEach(rec=>{
@@ -3938,11 +3946,15 @@ function dsSettingsHtml(){
   });
   h+=`</tbody></table></div></div>`;
   /* rows you type yourself — e.g. the UDG pick-up FS */
-  const man=dsManualRows();
+  const man=dsManualCur(), dirty=(dsManualDraft!==null);
   h+=`<div class="card"><div class="flexhead">
     <div><div class="step">Manual rows</div><h3>Rows you add by hand (e.g. Pick up FS)</h3>
       <p class="sub">One line each, added to the sheet of the month you set. Type the total charge — everything else is pre-filled from the Pick up FS template.</p></div>
-    <button class="ghost sm" onclick="dsAddManual()">+ Add row</button></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      ${dirty?`<span class="tag amber">unsaved changes</span>`:""}
+      <button class="ghost sm" onclick="dsAddManual()">+ Add row</button>
+      <button class="sm" onclick="dsSaveManual()">✔ Save rows</button>
+      ${dirty?`<button class="subtle sm" onclick="dsDiscardManual()">Discard</button>`:""}</div></div>
     <div class="tbl-scroll"><table><thead><tr><th>Month</th><th>Shipper's name</th><th>Service name</th>
       <th>Service provider</th><th>Destination</th><th>Marker (Service Provider AWB)</th><th class="num">Total charge (SGD)</th><th style="width:50px"></th></tr></thead><tbody>`;
   if(!man.length) h+=`<tr><td colspan="8" class="muted">No manual rows — click <b>+ Add row</b> (it starts as a UDG Pick up FS line).</td></tr>`;
