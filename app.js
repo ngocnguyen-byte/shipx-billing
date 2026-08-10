@@ -1322,7 +1322,11 @@ function docketReconcile(st){
       const expDock=round2(dls.reduce((s,x)=>{ const code=spCodeFor(x.country); const lc=code?lins[norm(code)]:null; return s+(lc?((lc.item||0)*x.qty+(lc.kg||0)*x.weight):0); },0));
       const ib=round2(ils.reduce((s,x)=>s+num(x.postage),0));
       const invRows=ils.map(x=>x._row).filter(x=>x!=null);
-      discrepancies.push({docket:dk,country:(dls[0]&&dls[0].country)||"",dq,dw,iq,iw,qtyDiff:iq-dq,billImpact:round2(ib-expDock),
+      const missing=dls.filter(x=>!x._used).map(x=>{ const cd=spCodeFor(x.country); const lc2=cd?lins[norm(cd)]:null, sc2=cd?sgl[norm(cd)]:null;
+        return {country:x.country,code:cd||"",qty:x.qty,weight:x.weight,
+          expLins:lc2?round2((lc2.item||0)*x.qty+(lc2.kg||0)*x.weight):null,
+          expSGL:sc2?round2((sc2.item||0)*x.qty+(sc2.kg||0)*x.weight):null}; });
+      discrepancies.push({docket:dk,country:(dls[0]&&dls[0].country)||"",dq,dw,iq,iw,qtyDiff:iq-dq,billImpact:round2(ib-expDock),missing,
         rows:invRows, rowsTxt:!invRows.length?"":(invRows.length>8
           ? (Math.min.apply(null,invRows)+"–"+Math.max.apply(null,invRows)+" ("+invRows.length+" lines)")
           : invRows.join(", "))});
@@ -1524,6 +1528,10 @@ function buildDocketReconWB(r,st){
   dsc.push([]); dsc.push(["2) Quantity / weight discrepancies (Linscomm billed vs docket):"]);
   dsc.push(["Docket No","Country","Docket Qty","Docket Wt","Linscomm Qty","Linscomm Wt","Qty Diff","Bill Impact S$","Row(s) in your Linscomm invoice"]);
   (r.discrepancies||[]).forEach(d=>dsc.push([d.docket,d.country,d.dq,d.dw,d.iq,d.iw,d.qtyDiff,m2(d.billImpact),d.rowsTxt||""]));
+  const anyMissing=(r.discrepancies||[]).some(d=>(d.missing||[]).length);
+  if(anyMissing){ dsc.push([]); dsc.push(["2b) The exact docket lines Linscomm did NOT bill (everything else on these dockets was billed correctly):"]);
+    dsc.push(["Docket No","Country","Code","Qty","Weight kg","Expected Linscomm S$","Expected SG Link S$"]);
+    (r.discrepancies||[]).forEach(d=>(d.missing||[]).forEach(x=>dsc.push([d.docket,x.country,x.code,x.qty,x.weight,m2(x.expLins),m2(x.expSGL)]))); }
   if(r.review.length){ dsc.push([]); dsc.push(["3) Lines needing review (not billed in outputs):"]);
     dsc.push(["Invoice row","Docket","Qty","Weight","Country","Service","Reason"]);
     r.review.forEach(x=>dsc.push([x.row==null?"":x.row,x.docket,x.qty,x.weight,x.country||"",x.service||"ePAC",x.reason])); }
@@ -1694,6 +1702,17 @@ function renderDocketResults(id){
   }
   if(r.rows.length && r.billed>0 && r.exp===0) h+=`<div class="banner err">⚠ <b>The ePAC cost card produced no rates</b> — every line came out at 0.00, so the variance below is meaningless.<br>
     Open <b>▤ Rate cards → ePAC — cost from Linscomm</b> and check the <b>Item S$</b> / <b>Kg S$</b> columns. If they are empty, click <b>Reset</b> on that card to restore the built-in rates, or load the correct rate file.</div>`;
+  if(r.discrepancies.length){
+    const miss=[].concat.apply([], r.discrepancies.map(d=>(d.missing||[]).map(x=>Object.assign({docket:d.docket},x))));
+    h+=`<div class="banner warn">⚠ <b>${r.discrepancies.length}</b> docket(s) where the totals differ from the invoice.
+      ${miss.length?`Only the line(s) below were not billed — everything else on those dockets is correct.`:""}</div>`;
+    if(miss.length) h+=`<div class="tbl-scroll" style="max-height:260px"><table><thead><tr><th>Docket</th><th>Country</th>
+      <th class="num">Qty</th><th class="num">Weight kg</th><th class="num">Not billed — Linscomm S$</th><th class="num">Would bill SG Link S$</th></tr></thead><tbody>`
+      + miss.map(x=>`<tr><td>${esc(x.docket)}</td><td>${esc(x.country)} <span class="muted">${esc(x.code||"")}</span></td>
+        <td class="num">${x.qty}</td><td class="num">${x.weight}</td><td class="num">${x.expLins!=null?x.expLins.toFixed(2):"—"}</td>
+        <td class="num">${x.expSGL!=null?x.expSGL.toFixed(2):"—"}</td></tr>`).join("")
+      + `</tbody></table></div>`;
+  }
   if(r.notBilled.length) h+=`<div class="banner warn">⚠ <b>${r.notBilled.length}</b> docket(s) posted but NOT in the Linscomm invoice: ${r.notBilled.slice(0,10).map(esc).join(", ")}${r.notBilled.length>10?'…':''}</div>`;
   if((r.invOnly||[]).length) h+=`<div class="banner warn">⚠ <b>${r.invOnly.length}</b> docket(s) billed by Linscomm with no docket PDF uploaded: ${r.invOnly.slice(0,10).map(esc).join(", ")}${r.invOnly.length>10?'…':''}</div>`;
   h+=`</div>`;
