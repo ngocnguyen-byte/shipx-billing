@@ -3783,11 +3783,34 @@ function setDsMap(svcId,field,val){
 function dsResetMap(){ if(!confirm("Clear every override and go back to the built-in values?")) return; dsSaveMap([]); render(); }
 const dsDefService=(id,o)=>{ const d=DS_SERVICE[id]; return (typeof d==="function")?d(o):(d||""); };
 const dsDefProvider=(id,o)=>{ const d=DS_PROVIDER[id]; return (typeof d==="function")?d(o):(d||""); };
+/* Pick up FS: the whole month is ONE row per customer, not one per pickup day (user's template) */
+const DS_PICKUP={service:"AME", provider:"Bpost", dest:"SG", tag:"Pick up FS",
+  names:{"Bpost":"BPOST SINGAPORE PTE. LTD."}};
+function dsManualRows(){ const r=loadSavedRates("datashipment:manual"); return Array.isArray(r)?r:[]; }
+function dsSaveManual(rows){ saveRatesFor("datashipment:manual",rows); }
+function dsAddManual(){ const rows=dsManualRows().slice();
+  rows.push({month:dsMonth(),shipper:"Urban Dosing Grounds",service:DS_PICKUP.service,provider:DS_PICKUP.provider,
+    dest:DS_PICKUP.dest,tag:DS_PICKUP.tag,total:""});
+  dsSaveManual(rows); render(); }
+function dsSetManual(i,field,val){ const rows=dsManualRows().slice(); if(!rows[i]) return;
+  rows[i]=Object.assign({},rows[i],{[field]:val}); dsSaveManual(rows); if(field!=="total") render(); }
+function dsDelManual(i){ const rows=dsManualRows().slice(); if(!rows[i]) return;
+  if(!confirm("Remove this row?")) return; rows.splice(i,1); dsSaveManual(rows); render(); }
 function dataShipmentRows(month){
   const out=[];
   loadRecords().filter(r=>String(r.month||"").slice(0,7)===month).forEach(rec=>{
     const ov=dsMap(rec.serviceId);
     const svcFallback=String(rec.service||"").split(" — ")[0].split(" (")[0];
+    if(rec.serviceId==="pickup"){                 /* one "Pick up FS" row per customer for the whole month */
+      const by={}; (rec.lines||[]).forEach(o=>{ const c=String(o.customer||"Bpost");
+        by[c]=round2((by[c]||0)+(num(o.amount)||0)); });
+      Object.keys(by).forEach(c=>{
+        out.push({month:month+"-01",date:"",acct:"",shipper:ov.customer||DS_PICKUP.names[c]||c,sales:(ov.sales!=null&&ov.sales!=="")?ov.sales:DS_SALES,
+          debit:"",amlAwb:"",spAwb:DS_PICKUP.tag,dhlAwb:"",service:ov.service||DS_PICKUP.service,provider:ov.provider||DS_PICKUP.provider,
+          dest:ov.dest||DS_PICKUP.dest,pkgs:"",gross:"",vol:"",chargeable:"",freight:"",extra:"",gst:"",total:by[c]});
+      });
+      return;
+    }
     (rec.lines||[]).forEach(o=>{
       const svcName=ov.service||dsDefService(rec.serviceId,o)||svcFallback;
       const prov=ov.provider||dsDefProvider(rec.serviceId,o);
@@ -3821,6 +3844,14 @@ function dataShipmentRows(month){
         product:prov, ptype:"", region:ov.dest||DS_DEST[rec.serviceId]||_dsn(o,["dest","country"]), wrange:"", dest2:"", dup:""
       });
     });
+  });
+  /* rows typed by hand (e.g. the UDG pick-up FS) */
+  dsManualRows().forEach(m=>{
+    if(String(m.month||"").slice(0,7)!==month) return;
+    if(num(m.total)==null) return;
+    out.push({month:month+"-01",date:"",acct:"",shipper:m.shipper||"",sales:DS_SALES,debit:"",
+      amlAwb:"",spAwb:m.tag||DS_PICKUP.tag,dhlAwb:"",service:m.service||DS_PICKUP.service,provider:m.provider||DS_PICKUP.provider,
+      dest:m.dest||DS_PICKUP.dest,pkgs:"",gross:"",vol:"",chargeable:"",freight:"",extra:"",gst:"",total:num(m.total)});
   });
   return out;
 }
@@ -3904,6 +3935,25 @@ function dsSettingsHtml(){
       <td>${box("customer",ov.customer,DS_CUSTOMER[sv.id]||"",250)}</td>
       <td>${box("dest",ov.dest,DS_DEST[sv.id]||"",90)}</td>
       <td>${box("sales",ov.sales,DS_SALES,120)}</td></tr>`;
+  });
+  h+=`</tbody></table></div></div>`;
+  /* rows you type yourself — e.g. the UDG pick-up FS */
+  const man=dsManualRows();
+  h+=`<div class="card"><div class="flexhead">
+    <div><div class="step">Manual rows</div><h3>Rows you add by hand (e.g. Pick up FS)</h3>
+      <p class="sub">One line each, added to the sheet of the month you set. Type the total charge — everything else is pre-filled from the Pick up FS template.</p></div>
+    <button class="ghost sm" onclick="dsAddManual()">+ Add row</button></div>
+    <div class="tbl-scroll"><table><thead><tr><th>Month</th><th>Shipper's name</th><th>Service name</th>
+      <th>Service provider</th><th>Destination</th><th>Marker (Service Provider AWB)</th><th class="num">Total charge (SGD)</th><th style="width:50px"></th></tr></thead><tbody>`;
+  if(!man.length) h+=`<tr><td colspan="8" class="muted">No manual rows — click <b>+ Add row</b> (it starts as a UDG Pick up FS line).</td></tr>`;
+  man.forEach((m,i)=>{
+    const b=(f,v,w,type)=>`<input type="${type||"text"}" value="${esc(v!=null?v:"")}"
+      onchange="dsSetManual(${i},'${f}',this.value)"
+      style="width:${w}px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:12.5px">`;
+    h+=`<tr><td>${b("month",String(m.month||"").slice(0,7),130,"month")}</td><td>${b("shipper",m.shipper,230)}</td>
+      <td>${b("service",m.service,90)}</td><td>${b("provider",m.provider,110)}</td><td>${b("dest",m.dest,70)}</td>
+      <td>${b("tag",m.tag,150)}</td><td class="num">${b("total",m.total,110)}</td>
+      <td style="text-align:center"><span class="x" title="Remove" style="cursor:pointer;color:var(--danger);font-weight:700" onclick="dsDelManual(${i})">×</span></td></tr>`;
   });
   return h+`</tbody></table></div></div>`;
 }
