@@ -3741,7 +3741,10 @@ function dataShipmentRows(month){
       out.push({
         month:month+"-01",
         date:toISO(_dsn(o,["date"]))||month+"-01",
-        acct:_dsn(o,["acct","code","customerCode"]),
+        /* account code goes in "Customer's account", the readable name in "Shipper's name" */
+        acct:_dsn(o,["acct","code","customerCode"])
+             || ((o._m&&o._m.acct)?o._m.acct:"")
+             || ((o.custName&&o.customer&&o.custName!==o.customer)?o.customer:""),
         shipper:DS_CUSTOMER[rec.serviceId]||_dsn(o,["custName","customer"])||rec.customer||"",
         sales:"", debit:"",
         amlAwb:awb, spAwb:_dsn(o,["track","awb","item","cn35"]), dhlAwb:"",
