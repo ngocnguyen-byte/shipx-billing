@@ -3767,7 +3767,10 @@ const DS_WEIGHT={ame:["weightKg","weightKg"], fedex:["weight","billW"], linehaul
 /* Total charge column — AME must equal "Total Chargeable" in its own billing output (same rounding) */
 const DS_TOTAL={ ame:o=>{ const wkg=(num(o.weightG)!=null)?(num(o.weightG)/1000):(num(o.weightKg)||0);   /* exact grams, not the rounded kg */
     return round3(round2(num(o.pc)||0) + round2((num(o.kg)||0)*wkg) + wkg); },
-  linehaul:o=>(num(o.price)!=null?num(o.price):num(o.amount)) };   /* the output's Price (SGD) column */
+  linehaul:o=>(num(o.price)!=null?num(o.price):num(o.amount)),      /* the output's Price (SGD) column */
+  ioss:o=>{ const v=num(o.vatSgd), f=num(o.feeSgd);                  /* VAT Payable (SGD) + Admin Fee (SGD) */
+    return (v!=null||f!=null)?round2((v||0)+(f||0)):num(o.amount); },
+  sp_dt:o=>(num(o.amount)!=null?round3(num(o.amount)):null) };       /* the output's Total SGD (3 dp, like that file) */
 const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty", domsg:"DOM",
   sp_post:o=>(o&&o.service)?String(o.service):"ePAC"};        /* each Singpost line carries its own service */
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
