@@ -3730,7 +3730,7 @@ const DS_PROVIDER={ccl:"Broadlink",domsg:"Amilo MY",ioss:"Ship24",pickup:"SingPo
 /* services billed to one fixed customer — the line's own "customer" is the consignee/route, not who we invoice */
 const DS_CUSTOMER={ccl:"SG LINK Export Import Company Limited", linehaul:"BPOST SINGAPORE PTE. LTD.",
   sp_dt:"SG LINK Export Import Company Limited"};
-const DS_DEST={ccl:"SG"};                        /* clearance happens in Singapore */
+const DS_DEST={ccl:"SG", sp_dt:"US"};            /* CCL clears in Singapore; the D&T shipments go to the US */
 /* what the P&L calls the service, when it differs from the service name in the tool */
 const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty"};
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
