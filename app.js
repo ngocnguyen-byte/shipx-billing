@@ -1687,6 +1687,33 @@ function saveU8(u8, filename){
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>{try{URL.revokeObjectURL(a.href);}catch(e){}},5000);
 }
+function saveDocketToRecords(id){
+  const st=state[id], r=st.result; if(!r){ alert("Reconcile first."); return; }
+  const lines=[]
+    .concat((r.rows||[]).map(o=>({service:"ePAC",date:toISO(o.date),docket:o.docket,country:o.country,code:o.code,
+      weight:num(o.weight),qty:num(o.qty),billed:num(o.billed),expected:num(o.expected),amount:num(o.sgl),cost:num(o.billed)})))
+    .concat((r.sp||[]).map(o=>({service:"Speedpost",date:toISO(o.date),docket:o.docket,item:o.docket,country:o.country,code:o.code,
+      weight:num(o.weight),band:o.band,qty:num(o.qty)||1,billed:num(o.billed),expected:num(o.expected),amount:num(o.sgl),cost:num(o.billed)})));
+  if(!lines.length){ alert("Nothing to save."); return; }
+  const months=[...new Set(lines.map(o=>periodOf(o.date||"").m).filter(m=>m!=="?"))].sort();
+  const cnt={}; lines.forEach(o=>{ const m=periodOf(o.date||"").m; if(m!=="?") cnt[m]=(cnt[m]||0)+1; });
+  let _month=months[0]||todayISO().slice(0,7);
+  Object.keys(cnt).forEach(m=>{ if(cnt[m]>(cnt[_month]||0)) _month=m; });
+  const dup=loadRecords().find(x=>x.serviceId==="sp_post" && x.month===_month);
+  if(dup && !confirm("⚠ Singpost Postage for "+_month+" is ALREADY in Records (saved "+String(dup.savedAt).slice(0,10)+").\n\nSave another copy anyway?")) return;
+  const amount=round2(lines.reduce((s,o)=>s+(num(o.amount)||0),0)), cost=round2(lines.reduce((s,o)=>s+(num(o.cost)||0),0));
+  const rec={ id:(crypto.randomUUID?crypto.randomUUID():"rec_"+Date.now()), serviceId:"sp_post", service:"Singpost Postage",
+    savedBy:CURRENT_USER, savedAt:new Date().toISOString(), files:[st.invoiceName].filter(Boolean), month:_month, inputRows:[],
+    totals:{amount,cost,hasCost:true,gp:round2(amount-cost),gpPct:amount?((amount-cost)/amount*100):0,shipments:lines.length},
+    byCustomer:[], customer:"SG Link", lines,
+    columns:[{k:"date",l:"Date"},{k:"service",l:"Service"},{k:"docket",l:"Docket / item"},{k:"country",l:"Country"},
+      {k:"weight",l:"Weight",num:true},{k:"qty",l:"Qty",num:true},{k:"billed",l:"Vendor S$",num:true,money:true},
+      {k:"amount",l:"SG Link S$",num:true,money:true,tot:true}],
+    currency:"$", reviewCount:(r.review||[]).length };
+  RECORDS.unshift(rec); insertRecordDB(rec);
+  alert("Saved to Records: "+lines.length+" shipment(s) for "+_month+" ("+money(amount)+").\n\nThey now feed the Data Shipment sheet.");
+  render();
+}
 function renderDocketResults(id){
   const st=state[id], r=st.result, el=document.getElementById("dockresults_"+id);
   if(!el) return;
@@ -1702,7 +1729,8 @@ function renderDocketResults(id){
       <p class="sub">Both services reconciled against SingPost/Linscomm, then billed to SG Link.</p></div>
     <div style="display:flex;gap:8px">
       <button class="ghost dl" onclick="downloadDocketRecon('${id}')">⭳ Reconciliation</button>
-      <button class="ghost dl" onclick="downloadDocketSGL('${id}')">⭳ SG Link billing</button></div></div>
+      <button class="ghost dl" onclick="downloadDocketSGL('${id}')">⭳ SG Link billing</button>
+      <button onclick="saveDocketToRecords('${id}')">✔ Save to records</button></div></div>
     <div class="tbl-scroll"><table><thead><tr><th>Service</th><th class="num">Lines</th><th class="num">Articles</th>
       <th class="num">Weight (kg)</th><th class="num">Vendor billed</th><th class="num">Rate-card expected</th>
       <th class="num">Variance</th><th class="num">Billing to SG Link</th><th class="num">Margin</th></tr></thead><tbody>
@@ -3732,15 +3760,30 @@ const DS_CUSTOMER={ccl:"SG LINK Export Import Company Limited", linehaul:"BPOST 
   sp_dt:"SG LINK Export Import Company Limited", domsg:"SG LINK Export Import Company Limited"};
 const DS_DEST={ccl:"SG", sp_dt:"US", domsg:"SG"};  /* CCL clears in Singapore, Dom SG is domestic; D&T goes to the US */
 /* what the P&L calls the service, when it differs from the service name in the tool */
-const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty", domsg:"DOM"};
+const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty", domsg:"DOM",
+  sp_post:o=>(o&&o.service)?String(o.service):"ePAC"};        /* each Singpost line carries its own service */
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
+/* the table on the Data Shipment page: {svc:{service,provider,customer,dest}} — blank means "use the shipment's own value" */
+function dsMapRows(){ const r=loadSavedRates("datashipment:map"); return Array.isArray(r)?r:[]; }
+function dsMap(svcId){ return dsMapRows().find(r=>r&&r.svc===svcId)||{}; }
+function dsSaveMap(rows){ saveRatesFor("datashipment:map",rows); }
+function setDsMap(svcId,field,val){
+  const rows=dsMapRows().slice(); let r=rows.find(x=>x&&x.svc===svcId);
+  if(!r){ r={svc:svcId}; rows.push(r); }
+  r[field]=String(val||"").trim();
+  dsSaveMap(rows); render();
+}
+function dsResetMap(){ if(!confirm("Clear every override and go back to the built-in values?")) return; dsSaveMap([]); render(); }
+const dsDefService=(id,o)=>{ const d=DS_SERVICE[id]; return (typeof d==="function")?d(o):(d||""); };
+const dsDefProvider=(id,o)=>{ const d=DS_PROVIDER[id]; return (typeof d==="function")?d(o):(d||""); };
 function dataShipmentRows(month){
   const out=[];
   loadRecords().filter(r=>String(r.month||"").slice(0,7)===month).forEach(rec=>{
-    const svcName=DS_SERVICE[rec.serviceId]||String(rec.service||"").split(" — ")[0].split(" (")[0];
-    const provOf=DS_PROVIDER[rec.serviceId];
+    const ov=dsMap(rec.serviceId);
+    const svcFallback=String(rec.service||"").split(" — ")[0].split(" (")[0];
     (rec.lines||[]).forEach(o=>{
-      const prov=(typeof provOf==="function")?provOf(o):(provOf||"");
+      const svcName=ov.service||dsDefService(rec.serviceId,o)||svcFallback;
+      const prov=ov.provider||dsDefProvider(rec.serviceId,o);
       const wt=num(_dsn(o,["weight","weightKg","actual","charge"]));
       const cw=num(_dsn(o,["billW","chargeable","charge","weightKg","weight"]));
       const _m=o._m||{};
@@ -3752,14 +3795,14 @@ function dataShipmentRows(month){
         month:month+"-01",
         date:toISO(_dsn(o,["date"]))||month+"-01",
         /* account code goes in "Customer's account", the readable name in "Shipper's name" */
-        acct:_dsn(o,["acct","code","customerCode"])
+        acct:_dsn(o,["acct","customerCode"])            /* NOT "code" — on Singpost/Linehaul that is the country */
              || ((o._m&&o._m.acct)?o._m.acct:"")
              || ((o.custName&&o.customer&&o.custName!==o.customer)?o.customer:""),
-        shipper:DS_CUSTOMER[rec.serviceId]||_dsn(o,["custName","customer"])||rec.customer||"",
+        shipper:ov.customer||DS_CUSTOMER[rec.serviceId]||_dsn(o,["custName","customer"])||rec.customer||"",
         sales:"", debit:"",
         amlAwb:amlAwb, spAwb:spAwb, dhlAwb:"",
         service:svcName, provider:prov,
-        dest:DS_DEST[rec.serviceId]||_dsn(o,["dest","country","port"]),
+        dest:ov.dest||DS_DEST[rec.serviceId]||_dsn(o,["dest","country","port"]),
         pkgs:num(_dsn(o,["pcs","qty","packages"]))||1,
         gross:wt, vol:"", chargeable:cw,
         freight:num(_dsn(o,["freight","billFreight","clearance","price"])),
@@ -3767,7 +3810,7 @@ function dataShipmentRows(month){
         gst:"",
         total:num(o.amount),
         awb2:spAwb||amlAwb,
-        product:prov, ptype:"", region:DS_DEST[rec.serviceId]||_dsn(o,["dest","country"]), wrange:"", dest2:"", dup:""
+        product:prov, ptype:"", region:ov.dest||DS_DEST[rec.serviceId]||_dsn(o,["dest","country"]), wrange:"", dest2:"", dup:""
       });
     });
   });
@@ -3820,6 +3863,28 @@ function renderDataShipment(v){
       <div class="metric"><div class="lbl">Services</div><div class="val">${svcs.length}</div></div>
       <div class="metric good"><div class="lbl">Total charge (SGD)</div><div class="val" style="font-size:19px">${money(total)}</div></div>
     </div>`;
+  h+=`</div><div class="card"><div class="flexhead">
+    <div><div class="step">Service settings</div><h3>How each service appears in the sheet</h3>
+      <p class="sub">Type to change any value — it saves as you go and is shared with the team.
+      <b>Leave a box empty</b> to use the shipment's own value. The grey text is what the tool uses when the box is empty.</p></div>
+    <button class="subtle sm" onclick="dsResetMap()">Reset all</button></div>
+    <div class="tbl-scroll"><table><thead><tr><th>Service</th><th>Service name</th><th>Service provider name</th>
+      <th>Shipper's name (bill-to)</th><th>Destination</th></tr></thead><tbody>`;
+  SERVICES.forEach(sv=>{
+    const ov=dsMap(sv.id);
+    const ph=(v)=>v?esc(String(v)):"from the shipment";
+    const box=(field,val,def,w)=>`<input type="text" value="${esc(val||"")}" placeholder="${ph(def)}"
+        onchange="setDsMap('${sv.id}','${field}',this.value)"
+        style="width:${w}px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px">`;
+    const defSvc=(typeof DS_SERVICE[sv.id]==="function")?"per shipment":(DS_SERVICE[sv.id]||sv.name.split(" — ")[0].split(" (")[0]);
+    const defProv=(typeof DS_PROVIDER[sv.id]==="function")?"per shipment (MH / APS)":(DS_PROVIDER[sv.id]||"");
+    h+=`<tr><td><b>${esc(sv.name)}</b></td>
+      <td>${box("service",ov.service,defSvc,150)}</td>
+      <td>${box("provider",ov.provider,defProv,170)}</td>
+      <td>${box("customer",ov.customer,DS_CUSTOMER[sv.id]||"",250)}</td>
+      <td>${box("dest",ov.dest,DS_DEST[sv.id]||"",90)}</td></tr>`;
+  });
+  h+=`</tbody></table></div></div><div class="card">`;
   if(!recs.length) h+=`<div class="banner warn">No saved records for ${esc(month)}. Run the services for that month and click <b>Save to records</b>, then come back.</div>`;
   else{
     h+=`<div class="banner ok">Using: ${recs.map(r=>esc(r.service)+" <span class='muted'>("+(r.lines||[]).length+" lines)</span>").join(" · ")}</div>`;
