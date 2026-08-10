@@ -3749,7 +3749,7 @@ function renderBatchResults(){
 const DS_COLS=["Month","Ship date","Customer's account","Shipper's name","Sales name","Debit Note","AML AWB",
   "Service Provider AWB","AWB DHL SG \n  / FDX","Service name","Service provider name","Destination","Packages",
   "Gross weight","Volumetric weight","Charagable weight","Freight charge","Extra surchages (Duties & Taxes)","GST",
-  "Total charge (without GST) (SGD)","AWB_v2","Product","Product type","Regions","Weight range","Destination","Check Dup"];
+  "Total charge (without GST) (SGD)"];      /* the sheet ends here — user, 2026-08-10 */
 /* which vendor actually carries each service */
 const DS_PROVIDER={ccl:"Broadlink",domsg:"J&T",ioss:"Ship24",pickup:"SingPost",
   ame:"Bpost",sp_dt:"Singpost",sp_post:"SingPost",fedex:"Bpost",
@@ -3761,6 +3761,9 @@ const DS_CUSTOMER={ccl:"SG LINK Export Import Company Limited", linehaul:"BPOST 
 const DS_DEST={ccl:"SG", sp_dt:"US", domsg:"SG"};  /* CCL clears in Singapore, Dom SG is domestic; D&T goes to the US */
 /* what the P&L calls the service, when it differs from the service name in the tool */
 const DS_SALES="Company";                        /* the template's Sales name on every row */
+/* which line fields hold the WEIGHTS for each service — "charge" means money on AME but kilos on Linehaul */
+const DS_WEIGHT={ame:["weightKg","weightKg"], fedex:["weight","billW"], linehaul:["actual","charge"],
+  ccl:["weight","weight"], sp_post:["weight","weight"], domsg:["weight","weight"]};
 const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty", domsg:"DOM",
   sp_post:o=>(o&&o.service)?String(o.service):"ePAC"};        /* each Singpost line carries its own service */
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
@@ -3785,8 +3788,9 @@ function dataShipmentRows(month){
     (rec.lines||[]).forEach(o=>{
       const svcName=ov.service||dsDefService(rec.serviceId,o)||svcFallback;
       const prov=ov.provider||dsDefProvider(rec.serviceId,o);
-      const wt=num(_dsn(o,["weight","weightKg","actual","charge"]));
-      const cw=num(_dsn(o,["billW","chargeable","charge","weightKg","weight"]));
+      const _w=DS_WEIGHT[rec.serviceId];
+      const wt=_w?num(o[_w[0]]):num(_dsn(o,["weight","weightKg","actual"]));
+      const cw=_w?num(o[_w[1]]):num(_dsn(o,["billW","chargeable","weightKg","weight"]));
       const _m=o._m||{};
       /* AML AWB = our own Amilo Shipment ID — blank for services that do not have one (user, 2026-08-10);
          Service Provider AWB = the carrier's number */
@@ -3821,7 +3825,7 @@ function dataShipmentAOA(month){
   const rows=dataShipmentRows(month);
   const aoa=[[],DS_COLS];
   rows.forEach(r=>aoa.push([r.month,r.date,r.acct,r.shipper,r.sales,r.debit,r.amlAwb,r.spAwb,r.dhlAwb,r.service,r.provider,
-    r.dest,r.pkgs,r.gross,r.vol,r.chargeable,r.freight,r.extra,r.gst,m2(r.total),r.awb2,r.product,r.ptype,r.region,r.wrange,r.dest2,r.dup]));
+    r.dest,r.pkgs,r.gross,r.vol,r.chargeable,r.freight,r.extra,r.gst,m2(r.total)]));
   return {aoa,rows};
 }
 function dsMonth(){ return dsState.month||prevMonthISO(); }
@@ -3895,8 +3899,7 @@ function renderDataShipment(v){
       <td>${esc(r.sales)}</td><td></td><td>${esc(r.amlAwb)}</td><td>${esc(r.spAwb)}</td><td></td><td>${esc(r.service)}</td><td>${esc(r.provider)}</td>
       <td>${esc(r.dest)}</td><td class="num">${r.pkgs}</td><td class="num">${r.gross}</td><td></td><td class="num">${r.chargeable}</td>
       <td class="num">${r.freight!=null?r.freight:""}</td><td class="num">${r.extra!=null?r.extra:""}</td><td></td>
-      <td class="num">${r.total!=null?money(r.total):""}</td><td>${esc(r.awb2)}</td><td>${esc(r.product)}</td><td></td>
-      <td>${esc(r.region)}</td><td></td><td></td><td></td></tr>`; });
+      <td class="num">${r.total!=null?money(r.total):""}</td></tr>`; });
     h+=`</tbody></table></div>`;
     if(rows.length>200) h+=`<p class="muted">Showing 200 of ${rows.length} — the download has them all.</p>`;
   }
