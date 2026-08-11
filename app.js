@@ -1607,29 +1607,56 @@ function buildDocketReconWB(r,st){
   wb.Workbook={CalcPr:{fullCalcOnLoad:true}};
   return {wb,sqref:"L3:L"+lastR};
 }
+function docketMonthFull(r){
+  const MF=["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const cnt={}; [].concat(r.rows||[],r.sp||[]).forEach(o=>{ const m=String(toISO(o.date)||"").slice(0,7); if(/^\d{4}-\d{2}$/.test(m)) cnt[m]=(cnt[m]||0)+1; });
+  let best=null; Object.keys(cnt).forEach(m=>{ if(best===null||cnt[m]>cnt[best]) best=m; });
+  if(!best) best=todayISO().slice(0,7);
+  return MF[(+best.slice(5,7))-1]+" "+best.slice(0,4);
+}
 function buildDocketSGLWB(r,st){
+  /* replica of the user's "SG Link - Singpost Postage Billing" workbook (Jul 2026 template) */
   const wb=XLSX.utils.book_new();
-  const N=r.rows.length, lastR=N+2;
-  const hdr=["Date\nOrdinary","Docket No","Mode","Schm","Weight (Kg)","Quantity","Rate","Country","Country Code","Postage to SG Link (SGD)"];
-  const row1=[null,null,null,null,fcell("SUM(E3:E"+lastR+")",round2(r.rows.reduce((s,o)=>s+num(o.weight),0))),fcell("SUM(F3:F"+lastR+")",r.qtyTot),null,null,null,fcell("SUM(J3:J"+lastR+")",r.sglTot)];
-  const aoa=[row1,hdr];
+  const mf=docketMonthFull(r);
+  const dn={}; (st.rateCards.sgl.rows||[]).forEach(x=>{ if(x.code) dn[norm(x.code)]=x.dest; });   /* code -> card name (USA, United Kingdom…) */
+  const hasSp=!!(r.sp&&r.sp.length);
+  /* 1 · Billing Summary */
+  const sum=[["SG Link - Billing Summary ("+mf+")"],["Amilo Pte Ltd  ->  SG Link"],["Service","Amount S$"],
+    ["ePAC", fcell("'ePAC Billing'!I"+(r.rows.length+3), r.sglTot)]];
+  if(hasSp) sum.push(["Speedpost", fcell("'Speedpost Billing'!G"+(r.sp.length+3), r.spSgl)]);
+  sum.push(["TOTAL", fcell("SUM(B4:B"+(hasSp?5:4)+")", round2(r.sglTot+(hasSp?r.spSgl:0)))]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),"Billing Summary");
+  /* 2 · ePAC Billing */
+  const N=r.rows.length, lastE=N+3;
+  const a1=[["SG Link - ePAC Postage Billing ("+mf+")"],
+    ["Date","Docket No","Mode","Schm","Weight (Kg)","Quantity","Country","Country Code","Amount S$"]];
   r.rows.forEach((o,i)=>{ const R=i+3;
-    aoa.push([o.date==null?null:o.date,o.docket,o.mode||null,o.schm||null,num(o.weight),o.qty,o.rate||null,o.country,o.code,
-      fcell("VLOOKUP(I"+R+",'Rate to SG Link'!$C:$E,2,0)*F"+R+"+VLOOKUP(I"+R+",'Rate to SG Link'!$C:$E,3,0)*E"+R,o.sgl!=null?o.sgl:0)]); });
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"ePAC");
-  const styleRefs=[{sheet:1,refs:["J1"]}];
-  if(r.sp&&r.sp.length){
-    const M=r.sp.length;
-    const a2=[[null,null,null,null,fcell("SUM(E3:E"+(M+2)+")",r.spWt),fcell("SUM(F3:F"+(M+2)+")",r.spQty,"0"),null,null,null,fcell("SUM(J3:J"+(M+2)+")",r.spSgl)],
-      ["Date\nOrdinary","Docket No","Mode","Schm","Weight (Kg)","Quantity","Rate band (Kg)","Country","Country Code","Postage to SG Link (SGD)"]];
-    r.sp.forEach(o=>a2.push([o.date,o.docket,o.mode||"AIR",o.schm||"SP",num(o.weight),o.qty,o.band,o.country,o.code,m2(o.sgl)]));
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a2),"Speedpost");
-    styleRefs.push({sheet:2,refs:["J1"]});
+    a1.push([o.date==null?null:o.date,o.docket,o.mode||"AIR",o.schm||"EP",num(o.weight),o.qty,
+      dn[norm(o.code)]||o.country,o.code,
+      fcell("VLOOKUP(H"+R+",'SG Link Rate (ePAC)'!$C:$E,2,0)*F"+R+"+VLOOKUP(H"+R+",'SG Link Rate (ePAC)'!$C:$E,3,0)*E"+R, o.sgl!=null?o.sgl:0)]); });
+  a1.push([null,null,null,null,fcell("SUM(E3:E"+(lastE-1)+")",round2(r.rows.reduce((s,o)=>s+num(o.weight),0))),"TOTAL",null,null,
+    fcell("SUM(I3:I"+(lastE-1)+")",r.sglTot)]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a1),"ePAC Billing");
+  const styleRefs=[{sheet:2,refs:["I"+lastE]},{sheet:1,refs:["B"+(hasSp?6:5)]}];
+  /* 3 · Speedpost Billing */
+  if(hasSp){
+    const M=r.sp.length, lastS=M+3;
+    const a2=[["SG Link - Speedpost Courier Billing ("+mf+")"],
+      ["Date","Item No","Svc","Country","Zone","Weight (Kg)","Amount S$"]];
+    r.sp.forEach(o=>a2.push([toISO(o.date)||o.date,o.docket,o.mode||"COM",o.code||o.country,o.schm||"",num(o.weight),m2(o.sgl)]));
+    a2.push([null,null,null,null,null,"TOTAL",fcell("SUM(G3:G"+(lastS-1)+")",r.spSgl)]);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a2),"Speedpost Billing");
+    styleRefs.push({sheet:3,refs:["G"+lastS]});
   }
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_spCardAOA(st.rateCards.sgl.rows,["SG LINK RATE CARD"])),"Rate to SG Link");
-  if(r.sp&&r.sp.length) XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_sp2CardAOA(st.rateCards.sp2sgl.rows,"SPEEDPOST — RATE TO SG LINK")),"Speedpost rate SGL");
+  /* 4/5 · the rate cards the amounts come from */
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(_spCardAOA(st.rateCards.sgl.rows,["SG LINK RATE CARD"])),"SG Link Rate (ePAC)");
+  if(hasSp){
+    const sp=[["Weight (kg) Not Exceeding"].concat(SP2_CC)];
+    (st.rateCards.sp2sgl.rows||[]).forEach(x=>sp.push([num(x.w)].concat(SP2_CC.map(c=>num(x[c])))));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sp),"SG Link Rate (Speedpost)");
+  }
   wb.Workbook={CalcPr:{fullCalcOnLoad:true}};
-  return {wb, styleRefs};
+  return {wb, styleRefs, monthFull:mf};
 }
 async function xlsxHighlightNonZero(u8, sheetIndex, sqref){
   if(typeof JSZip==="undefined") return u8;
@@ -1876,9 +1903,9 @@ async function downloadDocketSGL(id){
   const issues=docketIssues(r);
   if(issues.length && !confirm("⚠ The reconciliation does NOT match:\n\n• "+issues.join("\n• ")
       +"\n\nThis billing file would be sent to SG Link with those problems unresolved.\n\nDownload it anyway?")) return;
-  const {wb,styleRefs}=buildDocketSGLWB(r,state[id]);
+  const {wb,styleRefs,monthFull}=buildDocketSGLWB(r,state[id]);
   const u8=XLSX.write(wb,{type:"array",bookType:"xlsx"});
-  saveU8(await xlsxStyleCells(u8,styleRefs),"Singpost Postage Billing_SGL_"+todayISO()+".xlsx");
+  saveU8(await xlsxStyleCells(u8,styleRefs),"SG Link - Singpost Postage Billing - "+monthFull+".xlsx");
 }
 
 
