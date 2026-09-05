@@ -379,7 +379,8 @@ const SERVICES = [
       if(answered) checks.push(answered);
       const sell=pr.sell, price=round2(sell*billW), cost=inCost!=null?round2(inCost):round2((pr.cost||0)*billW);
       lines.push({date:toISO(r.date),cn35:r.cn35,actual:num(r.actual),charge:billW,dest:r.dest,port:portUsed,airline:r.airline,ratePkg,inCost,remarks:r.remarks,sell,price,amount:price,cost,check:checks.length?checks.join("; "):"OK"});
-      if(checks.length) checkFails.push({cn35:r.cn35,reason:checks.join("; ")});
+      if(checks.length) checkFails.push({cn35:r.cn35,date:toISO(r.date),dest:r.dest,port:r.port,airline:r.airline,
+        weight:billW,ratePkg,inCost,reason:checks.join("; ")});
     });
     const rev=round2(lines.reduce((s,o)=>s+o.amount,0)), cst=round2(lines.reduce((s,o)=>s+(o.cost||0),0)), gp=round2(rev-cst);
     const recon={ title:"Linehaul reconciliation — input checks", checkFails,
@@ -2278,9 +2279,15 @@ function prSpdSell(marginPct){
 }
 
 /* ---------------- Pricing UI ---------------- */
+/* service tab row — the four pricing services live inside the single "Pricing" nav item */
+function prSvcTabs(cur){
+  return `<div class="tabs" style="margin-bottom:10px">`+PRICING.map(s=>
+    `<button class="tab ${s.id===cur?'active':''}" onclick="go('pricing','${s.id}')">${esc(s.name)}</button>`).join("")+`</div>`;
+}
 function renderPricing(v,id){
   if(!PRS[id]) id="pfedex";
-  let h="", P, isAme=(id==="pame"||id==="pamd");
+  window._PR_LAST=id;
+  let h=prSvcTabs(id), P, isAme=(id==="pame"||id==="pamd");
   if(isAme){
     /* one item per postal service (AME / AMD) — origin tab row, then Build / Cost tabs */
     const svcName=(id==="pamd")?"AMD (Maxipak DDP)":"AME (Bpost)";
@@ -2296,7 +2303,7 @@ function renderPricing(v,id){
   P=PRS[id];
   const svc=PRICING.find(s=>s.id===id);
   setTitle(svc.name,"Pricing · "+svc.name);
-  h=`<div class="tabs" style="margin-bottom:14px">
+  h+=`<div class="tabs" style="margin-bottom:14px">
     <button class="tab ${P.tab==='build'?'active':''}" onclick="prTab('${id}','build')">⚙ Build rate card</button>
     <button class="tab ${P.tab==='cost'?'active':''}" onclick="prTab('${id}','cost')">▤ Cost cards</button></div>`;
   if(id==="pfedex") h+= P.tab==="build"?prFdxBuildHtml():prFdxCostHtml();
@@ -4027,8 +4034,7 @@ function renderNav(){
     h+=`<div class="nav-item ${act} ${ready}" onclick="go('service','${s.id}')"><span class="ico">▸</span> ${esc(s.name)}<span class="dot"></span></div>`;
   });
   h+=`<div class="nav-group">Pricing</div>`;
-  PRICING.forEach(s=>{ const act=route.view==='pricing'&&route.id===s.id?'active':'';
-    h+=`<div class="nav-item ${act} ready" onclick="go('pricing','${s.id}')"><span class="ico">◇</span> ${esc(s.name)}<span class="dot"></span></div>`; });
+  h+=`<div class="nav-item ${route.view==='pricing'?'active':''} ready" onclick="go('pricing',window._PR_LAST||'pfedex')"><span class="ico">◇</span> Pricing<span class="dot"></span></div>`;
   document.getElementById("nav").innerHTML=h;
 }
 function go(view,id){ route={view,id:id||null}; render(); window.scrollTo(0,0); }
@@ -4549,21 +4555,83 @@ function rateCardButtons(id,cardId){
     <button class="subtle sm dl" onclick="downloadRateCard(${arg})">⭳ Download</button>
     <button class="subtle sm" onclick="resetRate${N}(${arg})">Reset</button>`;
 }
+const rateFilter={};
+function setRateFilter(id,cardId,v){
+  rateFilter[_rowKey(id,cardId)]=String(v||"");
+  cardId?renderRateTableN(id,cardId):renderRateTable(id);
+  try{ const el=document.getElementById("rateFil_"+_rowKey(id,cardId).replace(":","_"));
+    if(el){ el.focus(); if(el.setSelectionRange) el.setSelectionRange(el.value.length,el.value.length); } }catch(e){}
+}
+function _rateFilterRow(cols,row,q,countryKey){
+  if(!q) return true;
+  const s=q.toLowerCase();
+  return cols.some(c=>String(row[c.key]??"").toLowerCase().indexOf(s)>=0)
+      || (countryKey && String(cname(row[countryKey])||"").toLowerCase().indexOf(s)>=0);
+}
+function _rateFilterBar(id,cardId,cols,shown,total){
+  const rk=_rowKey(id,cardId), q=rateFilter[rk]||"";
+  return `<tr><th colspan="${cols}" style="background:var(--light);color:var(--ink);text-align:left;font-weight:600">
+    <input id="rateFil_${rk.replace(":","_")}" type="text" value="${esc(q)}" placeholder="Filter — type a country, code, port, rate…"
+      oninput="setRateFilter('${id}',${cardId?`'${cardId}'`:"null"},this.value)"
+      style="width:280px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;font-size:12.5px">
+    <span class="muted" style="margin-left:10px;font-weight:400">${q?`showing ${shown} of ${total}`:`${total} rows`}</span>
+    ${q?`<button class="subtle sm" style="margin-left:8px" onclick="setRateFilter('${id}',${cardId?`'${cardId}'`:"null"},'')">Clear</button>`:""}
+  </th></tr>`;
+}
+/* ---- edit ONE rate line at a time (user, 2026-08-11) ---- */
+let rowEdit=null;                       /* {key, i, draft} — key is id or id:cardId */
+const _rowKey=(id,cardId)=>id+(cardId?(":"+cardId):"");
+function startRowEdit(id,cardId,i){
+  if(isEditingRate(id,cardId)) return;                       /* whole-card edit already open */
+  const rows=getRateRows(id,cardId||undefined);
+  if(!rows[i]) return;
+  rowEdit={key:_rowKey(id,cardId),i,draft:Object.assign({},rows[i])};
+  cardId?renderRateTableN(id,cardId):renderRateTable(id);
+}
+function setRowEditField(key,val,num_){ if(rowEdit) rowEdit.draft[key]= num_?num(val):val; }
+function cancelRowEdit(id,cardId){ rowEdit=null; cardId?renderRateTableN(id,cardId):renderRateTable(id); }
+function saveRowEdit(id,cardId){
+  if(!rowEdit) return;
+  const rows=getRateRows(id,cardId||undefined), i=rowEdit.i;
+  if(!rows[i]){ rowEdit=null; return; }
+  const cols=cardId?cardDef(id,cardId).cols:SVC[id].rate.cols;
+  const before=Object.assign({},rows[i]);
+  cols.forEach(c=>{ rows[i][c.key]=rowEdit.draft[c.key]; });
+  const keyCol=cardId?cardDef(id,cardId).keyCol:SVC[id].rate.keyCol;
+  const changed=cols.filter(c=>String(before[c.key]??"")!==String(rows[i][c.key]??""))
+                    .map(c=>c.label+": "+(before[c.key]??"")+" → "+(rows[i][c.key]??""));
+  rowEdit=null;
+  if(cardId){ persistRateN(id,cardId); logRateChange(id,cardDef(id,cardId).label,"edit row",(rows[i][keyCol]||"")+" — "+changed.join(", "));
+    renderRateTableN(id,cardId); }
+  else { persistRate(id); logRateChange(id,SVC[id].name,"edit row",(rows[i][keyCol]||"")+" — "+changed.join(", "));
+    renderRateTable(id); }
+  if(state[id]&&state[id].result) rerun(id);
+  toast(id,"Saved "+(rows[i][keyCol]||"row")+(changed.length?(" — "+changed.join(", ")):""),"ok");
+}
 function renderRateTable(id){
   const svc=SVC[id], ed=isEditingRate(id), rows=getRateRows(id);
   let h=`<thead><tr>`;
   svc.rate.cols.forEach(c=>h+=`<th class="${c.num?'num':''}">${esc(c.label)}</th>`);
-  h+=(ed?`<th style="width:60px">Delete</th>`:``)+`</tr></thead><tbody>`;
-  rows.forEach((row,i)=>{
-    h+=`<tr>`;
+  h+=(ed?`<th style="width:60px">Delete</th>`:`<th style="width:96px">Edit</th>`)+`</tr>`;
+  const rk=_rowKey(id,null), q=rateFilter[rk]||"";
+  const vis=rows.map((row,i)=>({row,i})).filter(x=>_rateFilterRow(svc.rate.cols,x.row,q,null));
+  h=`<thead>`+_rateFilterBar(id,null,svc.rate.cols.length+1,vis.length,rows.length)+h.slice("<thead>".length)+`</thead><tbody>`;
+  vis.forEach(({row,i})=>{
+    const re=(!ed && rowEdit && rowEdit.key===rk && rowEdit.i===i);
+    h+=`<tr${re?' style="background:#fff8ec"':''}>`;
     svc.rate.cols.forEach(c=>{
       const val=row[c.key]??"";
-      h+= ed ? `<td class="${c.num?'num':''}"><input class="cell-in" style="width:100%" value="${esc(val)}" onchange="editRate('${id}',${i},'${c.key}',this.value)"></td>`
+      h+= (ed||re) ? `<td class="${c.num?'num':''}"><input class="cell-in" style="width:100%" value="${esc(re?(rowEdit.draft[c.key]??""):val)}"
+             on${re?"input":"change"}="${re?`setRowEditField('${c.key}',this.value,${!!c.num})`:`editRate('${id}',${i},'${c.key}',this.value)`}"></td>`
              : `<td class="${c.num?'num':''}">${esc(val)}</td>`;
     });
     if(ed) h+=`<td style="text-align:center"><span class="x" title="Delete row" style="cursor:pointer;color:var(--danger);font-weight:700" onclick="delRateRow('${id}',${i})">✕</span></td>`;
+    else h+=`<td style="white-space:nowrap;text-align:center">${re
+      ? `<button class="sm" onclick="saveRowEdit('${id}')">✔</button> <button class="subtle sm" onclick="cancelRowEdit('${id}')">✕</button>`
+      : `<button class="ghost sm" title="Edit this line" onclick="startRowEdit('${id}',null,${i})">✎</button>`}</td>`;
     h+=`</tr>`;
   });
+  if(!vis.length) h+=`<tr><td colspan="${svc.rate.cols.length+1}" class="muted">No line matches “${esc(q)}”.</td></tr>`;
   document.getElementById("rateTbl_"+id).innerHTML=h+"</tbody>";
 }
 function editRate(id,i,key,val){ const c=SVC[id].rate.cols.find(c=>c.key===key);
@@ -4591,14 +4659,25 @@ function cardDef(id,cardId){ return SVC[id].rateCards.find(c=>c.id===cardId); }
 function renderRateTableN(id,cardId){
   const c=cardDef(id,cardId), ed=isEditingRate(id,cardId), rows=getRateRows(id,cardId);
   let h=`<thead><tr>`; c.cols.forEach(col=>{ h+=`<th class="${col.num?'num':''}">${esc(col.label)}</th>`; if(c.countryKey===col.key) h+=`<th>Country</th>`; });
-  h+=(ed?`<th style="width:60px">Delete</th>`:``)+`</tr></thead><tbody>`;
-  rows.forEach((row,i)=>{ h+=`<tr>`;
+  h+=(ed?`<th style="width:60px">Delete</th>`:`<th style="width:96px">Edit</th>`)+`</tr>`;
+  const rk=_rowKey(id,cardId), q=rateFilter[rk]||"";
+  const vis=rows.map((row,i)=>({row,i})).filter(x=>_rateFilterRow(c.cols,x.row,q,c.countryKey));
+  const ncol=c.cols.length+1+(c.countryKey?1:0);
+  h=`<thead>`+_rateFilterBar(id,cardId,ncol,vis.length,rows.length)+h.slice("<thead>".length)+`</thead><tbody>`;
+  vis.forEach(({row,i})=>{
+    const re=(!ed && rowEdit && rowEdit.key===rk && rowEdit.i===i);
+    h+=`<tr${re?' style="background:#fff8ec"':''}>`;
     c.cols.forEach(col=>{ const val=row[col.key]??"";
-      h+= ed ? `<td class="${col.num?'num':''}"><input class="cell-in" style="width:100%" value="${esc(val)}" onchange="editRateN('${id}','${cardId}',${i},'${col.key}',this.value)"></td>`
+      h+= (ed||re) ? `<td class="${col.num?'num':''}"><input class="cell-in" style="width:100%" value="${esc(re?(rowEdit.draft[col.key]??""):val)}"
+             on${re?"input":"change"}="${re?`setRowEditField('${col.key}',this.value,${!!col.num})`:`editRateN('${id}','${cardId}',${i},'${col.key}',this.value)`}"></td>`
              : `<td class="${col.num?'num':''}">${esc(val)}</td>`;
       if(c.countryKey===col.key) h+=`<td class="muted" style="white-space:nowrap">${esc(cname(row[col.key]))}</td>`; });
     if(ed) h+=`<td style="text-align:center"><span style="cursor:pointer;color:var(--danger);font-weight:700" onclick="delRateRowN('${id}','${cardId}',${i})">✕</span></td>`;
+    else h+=`<td style="white-space:nowrap;text-align:center">${re
+      ? `<button class="sm" onclick="saveRowEdit('${id}','${cardId}')">✔</button> <button class="subtle sm" onclick="cancelRowEdit('${id}','${cardId}')">✕</button>`
+      : `<button class="ghost sm" title="Edit this line" onclick="startRowEdit('${id}','${cardId}',${i})">✎</button>`}</td>`;
     h+=`</tr>`; });
+  if(!vis.length) h+=`<tr><td colspan="${ncol}" class="muted">No line matches “${esc(q)}”.</td></tr>`;
   document.getElementById("rateTbl_"+id+"_"+cardId).innerHTML=h+"</tbody>";
 }
 function editRateN(id,cardId,i,key,val){ const col=cardDef(id,cardId).cols.find(c=>c.key===key);
@@ -5003,7 +5082,19 @@ function renderResult(id){
     res.recon.metrics.forEach(m=>{
       h+=`<div class="metric"><div class="lbl">${esc(m.label)}</div><div class="val" style="font-size:19px">${m.money?money(m.value,cur):esc(m.value)}</div></div>`;
     });
-    h+=`</div><div class="banner ${res.recon.verdict.indexOf("✓")>=0?'ok':'warn'}">${esc(res.recon.verdict)}</div></div>`;
+    h+=`</div><div class="banner ${res.recon.verdict.indexOf("✓")>=0?'ok':'warn'}">${esc(res.recon.verdict)}</div>`;
+    const cf=res.recon.checkFails||[];
+    if(cf.length){
+      h+=`<div class="issuebox diff"><p class="issuehead">⚠ ${cf.length} shipment(s) to check — the same rows carry the reason in the 'Check' column of the download</p>
+        <div class="tbl-scroll" style="max-height:300px"><table><thead><tr><th>CN35 / ref</th><th>Date</th><th>Dest</th><th>Port</th><th>Airline</th>
+          <th class="num">Wt billed</th><th class="num">Rate p/kg</th><th class="num">Cost</th><th>What is wrong</th></tr></thead><tbody>`;
+      cf.slice(0,200).forEach(x=>{ h+=`<tr><td style="white-space:nowrap">${esc(x.cn35||"")}</td><td>${esc(x.date||"")}</td>
+        <td>${esc(x.dest||"")}</td><td>${esc(x.port||"")}</td><td>${esc(x.airline||"")}</td>
+        <td class="num">${x.weight!=null?x.weight:""}</td><td class="num">${x.ratePkg!=null?x.ratePkg:""}</td>
+        <td class="num">${x.inCost!=null?x.inCost:""}</td><td>${esc(x.reason||"")}</td></tr>`; });
+      h+=`</tbody></table></div>${cf.length>200?`<p class="muted">Showing 200 of ${cf.length}.</p>`:""}</div>`;
+    }
+    h+=`</div>`;
   }
 
   if(res.fedexRecon){ h+=fedexReconCardHtml(id,res.fedexRecon); }
