@@ -24,6 +24,37 @@ function monthLabel(res){ if(res&&res.monthHint) return res.monthHint;
   return MON[(+m.slice(5,7))-1]+" "+m.slice(0,4); }
 const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const norm = s => String(s??"").toLowerCase().replace(/[^a-z0-9]/g,"");
+/* Every downloaded sheet gets its columns widened to fit the content (user, 2026-08-11).
+   Wrapping XLSX.write/writeFile means this applies to ALL outputs, old and new. */
+function fitSheetCols(ws){
+  if(!ws||!ws["!ref"]) return;
+  let R; try{ R=XLSX.utils.decode_range(ws["!ref"]); }catch(e){ return; }
+  const cols=[];
+  for(let c=R.s.c;c<=R.e.c;c++){
+    let wide=6;
+    for(let r=R.s.r;r<=R.e.r;r++){
+      const cell=ws[XLSX.utils.encode_cell({r:r,c:c})];
+      if(!cell) continue;
+      let t=(cell.w!=null)?cell.w:(cell.v!=null?cell.v:"");
+      if(t instanceof Date) t=toISO(t);
+      t=String(t);
+      if(cell.z && typeof cell.v==="number" && cell.w==null) t=cell.v.toFixed(2);
+      t.split("\n").forEach(part=>{ if(part.length>wide) wide=part.length; });
+    }
+    cols.push({wch:Math.min(Math.max(wide+2,9),42)});
+  }
+  ws["!cols"]=cols;
+}
+function fitWorkbookCols(wb){
+  try{ (wb&&wb.SheetNames||[]).forEach(n=>fitSheetCols(wb.Sheets[n])); }catch(e){ console.error("column fit failed",e); }
+  return wb;
+}
+if(typeof XLSX!=="undefined" && !XLSX._fitWrapped){
+  XLSX._fitWrapped=true;
+  const _w=XLSX.write, _wf=XLSX.writeFile;
+  XLSX.write=function(wb,opts){ fitWorkbookCols(wb); return _w.call(XLSX,wb,opts); };
+  XLSX.writeFile=function(wb,fn,opts){ fitWorkbookCols(wb); return _wf.call(XLSX,wb,fn,opts); };
+}
 const todayISO = () => new Date().toISOString().slice(0,10);
 const prevMonthISO = () => { const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
   return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); };   /* billing is done for the month just ended */
