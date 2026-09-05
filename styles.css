@@ -93,7 +93,8 @@
   .metric.good .val{ color:var(--ok); }
   .metric.accent{ border-color:var(--accent2); background:linear-gradient(160deg,#eef6ff,#e2eefb); }
 
-  .banner{ border-radius:9px; padding:11px 14px; font-size:13px; margin-top:12px; display:flex; gap:9px; align-items:flex-start; }
+  /* block, not flex: a flex banner turns every <b>/<a>/<span> into a column and the text goes vertical */
+  .banner{ border-radius:9px; padding:11px 14px; font-size:13px; line-height:1.55; margin-top:12px; display:block; }
   .banner.warn{ background:var(--warn-bg); border:1px solid #f2c98a; color:#7a4a00; }
   .banner.err{ background:var(--danger-bg); border:1px solid #f0b2ab; color:#8a2419; }
   .banner.ok{ background:var(--ok-bg); border:1px solid #a9dcc0; color:#155f38; }

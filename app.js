@@ -174,6 +174,8 @@ function _sp2CardAOA(rows,title){
   (rows||[]).forEach(r=>aoa.push([num(r.w)].concat(SP2_CC.map(c=>num(r[c])))));
   return aoa;
 }
+/* UPS — Aera (Chuyen tuyen Singapore, service code KYD, from 14/01/2026): price by chargeable weight, VND */
+const _UPS_AERA=[[0.5,320000],[1,359000],[1.5,443000],[2,473000],[2.5,590000],[3,649000],[3.5,741000],[4,787000],[4.5,879000],[5,924000],[5.5,1016000],[6,1062000],[6.5,1154000],[7,1199000],[7.5,1291000],[8,1337000],[8.5,1414000],[9,1445000],[9.5,1522000],[10,1554000],[10.5,1631000],[11,1662000],[11.5,1739000],[12,1770000],[12.5,1847000],[13,1878000],[13.5,1956000],[14,1987000],[14.5,2064000],[15,2095000],[15.5,2172000],[16,2203000],[16.5,2281000],[17,2312000],[17.5,2389000],[18,2420000],[18.5,2497000],[19,2528000],[19.5,2606000],[20,2637000],[20.5,2605000],[21,2635000],[21.5,2709000],[22,2739000],[22.5,2808000],[23,2838000],[23.5,2912000],[24,2942000],[24.5,3016000],[25,3046000],[25.5,3120000],[26,3150000],[26.5,3224000],[27,3254000],[27.5,3328000],[28,3358000],[28.5,3432000],[29,3462000],[29.5,3536000],[30,3566000]];
 const SERVICES = [
 /* ---------------- CCL ---------------- */
 {
@@ -501,9 +503,9 @@ const SERVICES = [
     return out;
   }
 },
-/* ---------------- AME (Postal) ---------------- */
+/* ---------------- AME ---------------- */
 {
-  id:"ame", name:"AME (Postal)", group:"Rate-card", tags:["Billing","Recon","GP","Multi-cust"], status:"ready", keepAllColumns:true,
+  id:"ame", name:"AME", group:"Rate-card", tags:["Billing","Recon","GP","Multi-cust"], status:"ready", keepAllColumns:true,
   description:"Postal billing per customer account. Charge = PC rate + KG rate × weight(kg); Total = Charge + Transport surcharge (weight × S$1). Cost (terminal + linehaul + last-mile + pickup) and GP are computed too — both verified to the cent vs your CALC. Each account has its own rate card below (editable/uploadable).",
   addCustomerCards:true,
   rateCards: AME_ACCOUNTS.map(a=>({id:a, label:"Rate card · "+a, keyCol:"cc", countryKey:"cc", cols:AME_CARD_COLS,
@@ -1212,6 +1214,118 @@ const SERVICES = [
       res.review.forEach(r=>aoa.push([r.awb,(r.ref||r.billto||""),r.reason]));
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Needs review"); }
     return {wb,name:"FedEx Billing by customer"};
+  }
+},
+/* ---------------- UPS (customer sub-tabs) ---------------- */
+{
+  id:"ups", name:"UPS", group:"Rate-card", tags:["Billing","GP","Multi-cust"], status:"ready",
+  custTabs:[{id:"aera", name:"Aera", full:"Aera Gear Private Limited", card:"aera", bulk:"aera_bulk"}],
+  description:"UPS billing, one sub-tab per customer. Input = the SGLINK billing file (that is our cost). Selling price comes from the customer's own rate card: a chargeable weight up to 30 kg is read straight off the weight table (the next 0.5 kg step up), above 30 kg it is chargeable weight x the per-kg rate of that band. Price (SGD) = Price (VND) / the exchange rate on the input line (or the fixed rate in Settings). Cost = the Total (VND) the vendor billed, converted at the same rate; GP = Price - Cost. Output = the UPS VN Billing file for that customer.",
+  settings:[{key:"fx",label:"VND to SGD rate (blank = the rate on each input row)",value:""},
+            {key:"ref",label:"Only bill rows whose Shipment Reference contains (blank = every row)",value:""}],
+  rateCards:[
+    {id:"aera", cust:"aera", label:"Aera - Chuyen tuyen Singapore (KYD) - price by chargeable weight (VND)", keyCol:"weight",
+      cols:[{key:"weight",label:"Weight (Kg)",num:true},{key:"price",label:"Gia (VND)",num:true}],
+      rows:_UPS_AERA.map(r=>({weight:r[0],price:r[1]})) },
+    {id:"aera_bulk", cust:"aera", label:"Aera - over 30 kg - price per kg (VND)", keyCol:"from",
+      cols:[{key:"from",label:"From (Kg)",num:true},{key:"to",label:"To (Kg)",num:true},{key:"perkg",label:"Gia / Kg (VND)",num:true}],
+      rows:[{from:31,to:70,perkg:109000},{from:71,to:300,perkg:100000},{from:301,to:999,perkg:99000}] }
+  ],
+  input:{ cols:[
+    {key:"date",label:"Date",aliases:["date","shipdate"],required:true},
+    {key:"client",label:"Client Code",aliases:["clientcode"],required:false},
+    {key:"shipper",label:"Shipper Name",aliases:["shippername"],required:false},
+    {key:"consignee",label:"Recipient Name",aliases:["recipientname"],required:false},
+    {key:"awbx",label:"AWB SGLINK",aliases:["awbsglink","awbshipx"],required:true},
+    {key:"track",label:"AWB",aliases:["awb","awbprovider"],required:false},
+    {key:"ref",label:"Shipment Reference",aliases:["shipmentreference"],required:false},
+    {key:"svc",label:"Service",aliases:["service"],required:false},
+    {key:"dest",label:"Dest",aliases:["dest","destination"],required:false},
+    {key:"pcs",label:"No. of packages",aliases:["noofpackages","nopackages","packages","piece","pieces"],required:false},
+    {key:"weight",label:"Gross Weight (kg)",aliases:["grossweightkg","grossweight","actualweight"],required:false},
+    {key:"vol",label:"Volumetric Weight (kg)",aliases:["volumetricweightkg","volumetricweight"],required:false},
+    {key:"billW",label:"Chargeable Weight (kg)",aliases:["chargeableweightkg","chargeableweight"],required:true},
+    {key:"tax",label:"Tax (if any) (VND)",aliases:["taxifanyvnd","taxvnd"],required:false},
+    {key:"sur",label:"Surcharge (VND)",aliases:["surchargevnd"],required:false},
+    {key:"fee",label:"Shipping Fee (VND)",aliases:["shippingfeevnd","shippingfee"],required:false},
+    {key:"costVnd",label:"Total (VND)",aliases:["totalvnd"],required:false},
+    {key:"fx",label:"Exchange Rate (VND to SGD)",aliases:["exchangeratevndtosgd","exchangerate"],required:false} ]},
+  calc(rows,rate,st){
+    const cust=(typeof svcCustDef==="function"&&svcCustDef(this))||(this.custTabs&&this.custTabs[0])||{id:"",name:"Customer",full:"Customer",card:"",bulk:""};
+    const cards=(st&&st.rateCards)||{};
+    const steps=(((cards[cust.card])||{rows:[]}).rows||[])
+      .map(r=>({w:num(r.weight),p:num(r.price)})).filter(r=>r.w!=null&&r.p!=null).sort((a,b)=>a.w-b.w);
+    const bands=(((cards[cust.bulk])||{rows:[]}).rows||[])
+      .map(r=>({from:num(r.from),to:num(r.to),per:num(r.perkg)})).filter(r=>r.per!=null&&r.from!=null).sort((a,b)=>a.from-b.from);
+    const fxSet=num(st&&st.settings&&st.settings.fx);
+    const want=String((st&&st.settings&&st.settings.ref)||"").trim().toUpperCase();
+    const lines=[],review=[]; const fxUsed={}; let surch=[];
+    if(!steps.length) return {lines:[],review:rows.map(r=>({...r,reason:"No rate card loaded for "+cust.name})),currency:"$",
+      columns:[{k:"amount",l:"Price (SGD)",num:true,money:true,tot:true}]};
+    const topW=steps[steps.length-1].w;
+    rows.forEach(r=>{
+      const ref=String(r.ref==null?"":r.ref).trim();
+      if(want && ref.toUpperCase().indexOf(want)<0){ review.push({...r,reason:'Shipment Reference does not contain "'+want+'" - not billed to '+cust.name}); return; }
+      const cw=num(r.billW);
+      if(cw==null||cw<=0){ review.push({...r,reason:"No chargeable weight on this row"}); return; }
+      let vnd=null, step="";
+      if(cw<=topW+1e-9){ const hit=steps.find(x=>x.w>=cw-1e-9);
+        if(hit){ vnd=hit.p; step=hit.w+" kg"+(Math.abs(hit.w-cw)>1e-9?" (rounded up from "+cw+")":""); } }
+      else { const b=bands.find(x=>cw>=x.from-1e-9 && (x.to==null||cw<=x.to+1e-9));
+        if(b){ vnd=Math.round(cw*b.per); step=b.from+"-"+b.to+" kg x "+b.per+"/kg"; } }
+      if(vnd==null){ review.push({...r,reason:"Chargeable weight "+cw+" kg is not on the "+cust.name+" rate card"}); return; }
+      const fx=(fxSet!=null&&fxSet>0)?fxSet:num(r.fx);
+      if(fx==null||fx<=0){ review.push({...r,reason:"No exchange rate on this row - fill the Exchange Rate column or set one in Settings"}); return; }
+      fxUsed[fx]=(fxUsed[fx]||0)+1;
+      const cVnd=(num(r.costVnd)!=null)?num(r.costVnd):num(r.fee);
+      const tax=num(r.tax)||0, sur=num(r.sur)||0;
+      if(tax||sur) surch.push({id:(r.awbx||r.track||ref||"?"),tax,sur});
+      lines.push({date:toISO(r.date), amilo:(r.awbx==null?"":String(r.awbx).trim()), track:(r.track==null?"":String(r.track).trim()),
+        ref, service:"UPS", inSvc:(r.svc==null?"":String(r.svc).trim()), dest:(r.dest==null?"SG":String(r.dest).trim()||"SG"),
+        pcs:num(r.pcs)||1, weight:num(r.weight), vol:num(r.vol), billW:cw, step,
+        priceVnd:vnd, fx, amount:round2(vnd/fx), costVnd:cVnd, cost:(cVnd!=null?round2(cVnd/fx):null),
+        customer:cust.full, consignee:(r.consignee==null?"":String(r.consignee).trim()),
+        _m:{raw:r._raw,hdr:r._hdr}});
+    });
+    const bill=round2(lines.reduce((s,o)=>s+o.amount,0));
+    const cost=round2(lines.reduce((s,o)=>s+(o.cost||0),0));
+    const fxs=Object.keys(fxUsed);
+    const metrics=[{label:"Shipments",value:lines.length},
+      {label:"Chargeable weight (kg)",value:round2(lines.reduce((s,o)=>s+(o.billW||0),0))},
+      {label:"Price (VND)",value:lines.reduce((s,o)=>s+(o.priceVnd||0),0).toLocaleString("en-US")},
+      {label:"Total billing (SGD)",value:bill,money:true},
+      {label:"Cost from SGLINK (SGD)",value:cost,money:true},
+      {label:"GP (SGD)",value:round2(bill-cost),money:true},
+      {label:"FX used",value:fxs.length===1?("1 SGD = "+(+fxs[0]).toLocaleString("en-US")+" VND"):(fxs.length+" different rates")}];
+    let verdict="✓ Billed to "+cust.full+" on the "+cust.name+" rate card; cost is the Total (VND) on the SGLINK input.";
+    if(surch.length) verdict="⚠ "+surch.length+" row(s) carry Tax/Surcharge on the SGLINK input ("+
+      surch.slice(0,4).map(x=>x.id+": "+(x.tax?"tax "+x.tax.toLocaleString("en-US"):"")+(x.tax&&x.sur?" + ":"")+(x.sur?"surcharge "+x.sur.toLocaleString("en-US"):"")).join(", ")+
+      (surch.length>4?" …":"")+"). They are counted in the cost but the billing template has no column for them - tell me how they should be charged to the customer.";
+    return {lines,review,currency:"$",billCustomer:cust.full,custId:cust.id,custName:cust.name,custFull:cust.full,
+      recon:{title:"UPS billing - "+cust.full,metrics,verdict},
+      columns:[{k:"date",l:"Ship Date"},{k:"amilo",l:"AWB ShipX"},{k:"track",l:"AWB Provider"},{k:"service",l:"Service"},
+        {k:"dest",l:"Destination"},{k:"pcs",l:"Piece",num:true},{k:"weight",l:"Actual Weight (KG)",num:true},
+        {k:"vol",l:"Volumetric Weight (KG)",num:true},{k:"billW",l:"Chargeable Weight (KG)",num:true},{k:"step",l:"Rate step"},
+        {k:"priceVnd",l:"Price (VND)",num:true},{k:"amount",l:"Price (SGD)",num:true,money:true,tot:true}]};
+  },
+  buildWorkbook(res,st){
+    const full=res.custFull||"Customer", short=res.custName||full;
+    const N=res.lines.length, tot=round2(res.lines.reduce((s,o)=>s+(o.amount||0),0));
+    const head=["Ship Month","Ship Date","AWB ShipX","AWB Provider","Service","Destination","Piece",
+      "Actual Weight (KG)","Volumetric Weight (KG)","Chargeable Weight (KG)","Price (VND)","Price (SGD)"];
+    const r0=head.map(()=>null); r0[11]=fcell("SUM(L3:L"+(N+2)+")",tot);
+    const aoa=[r0,head];
+    res.lines.forEach(o=>{
+      const iso=String(o.date||""); const mm=/^\d{4}-\d{2}/.test(iso)?(+iso.slice(5,7)):null;
+      const ser=/^\d{4}-\d{2}-\d{2}$/.test(iso)?Math.round((Date.parse(iso+"T00:00:00Z")-Date.UTC(1899,11,30))/86400000):null;
+      aoa.push([mm, (ser!=null?{t:"n",v:ser,z:"m/d/yyyy"}:iso), o.amilo, o.track, o.service||"UPS", o.dest, o.pcs,
+        o.weight, o.vol, o.billW, (o.priceVnd!=null?{t:"n",v:o.priceVnd,z:"#,##0"}:null), m2(o.amount)]);
+    });
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),String(short).replace(/[\/\\:*?\[\]]/g,"_").slice(0,31)||"Billing");
+    const ml=monthLabel(res).replace(/ (\d\d)(\d\d)$/," $2");        /* "Jul 2026" -> "Jul 26", like the customer's file */
+    return {wb, name:("UPS VN Billing - "+full+" - "+ml).replace(/[\/\\:*?\[\]"<>|]/g,"_"), nameHasMonth:true,
+      styleRefs:[{sheet:1,refs:["L1"]}]};
   }
 },
 ];
@@ -3816,7 +3930,7 @@ const DS_COLS=["Month","Ship date","Customer's account","Shipper's name","Sales 
   "Gross weight","Volumetric weight","Charagable weight","Freight charge","Extra surchages (Duties & Taxes)","GST",
   "Total charge (without GST) (SGD)"];      /* the sheet ends here — user, 2026-08-10 */
 /* which vendor actually carries each service */
-const DS_PROVIDER={ccl:"Broadlink",domsg:"J&T",ioss:"Ship24",pickup:"SingPost",
+const DS_PROVIDER={ccl:"Broadlink",domsg:"J&T",ioss:"Ship24",pickup:"SingPost",ups:"UPS",
   ame:"Bpost",sp_dt:"Singpost",sp_post:"SingPost",fedex:"Bpost",
   /* linehaul: the airline decides — MH flights are MH, everything else is APS */
   linehaul:o=>/^MH/i.test(String((o&&o.airline)||"").trim())?"MH":"APS"};
@@ -3827,12 +3941,12 @@ const DS_DEST={ccl:"SG", sp_dt:"US", domsg:"SG"};  /* CCL clears in Singapore, D
 /* what the P&L calls the service, when it differs from the service name in the tool */
 const DS_SALES="Company";                        /* the template's Sales name on every row */
 /* which line fields hold the WEIGHTS for each service — "charge" means money on AME but kilos on Linehaul */
-const DS_WEIGHT={ame:["weightKg","weightKg"], fedex:["weight","billW"], linehaul:["actual","charge"],
+const DS_WEIGHT={ame:["weightKg","weightKg"], fedex:["weight","billW"], linehaul:["actual","charge"], ups:["weight","billW"],
   ccl:["weight","weight"], sp_post:["weight","weight"], domsg:["weight","weight"]};
 /* Total charge column = exactly what the service billed (user, 2026-08-10), so the sheet always
    agrees with the Billing screen and with Records. Add a per-service override here only if asked. */
 const DS_TOTAL={};
-const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty", domsg:"DOM",
+const DS_SERVICE={ioss:"Import Tax/Duty", sp_dt:"Import Tax/Duty", domsg:"DOM", ups:"UPS",
   sp_post:o=>(o&&o.service)?String(o.service):"ePAC"};        /* each Singpost line carries its own service */
 const _dsn=(o,keys)=>{ for(const k of keys){ const v=o[k]; if(v!=null&&v!=="") return v; } return ""; };
 /* the table on the Data Shipment page: {svc:{service,provider,customer,dest}} — blank means "use the shipment's own value" */
@@ -4125,6 +4239,17 @@ function setTitle(t,crumb){ document.getElementById("pageTitle").textContent=t; 
 /* ---------------- SERVICE VIEW ---------------- */
 let svcTab={};
 function setSvcTab(id,tab){ svcTab[id]=tab; render(); }
+/* second-level tabs: one per customer inside a service (UPS -> Aera) */
+let svcCust={};
+function svcCustId(svc){ const cs=(svc&&svc.custTabs)||[]; const cur=svcCust[svc.id];
+  return (cur&&cs.some(c=>c.id===cur))?cur:((cs[0]&&cs[0].id)||null); }
+function svcCustDef(svc){ const id=svcCustId(svc); return ((svc&&svc.custTabs)||[]).find(c=>c.id===id)||null; }
+function setSvcCust(id,c){ svcCust[id]=c; render();
+  const st=state[id]; if(st&&(st.parsed||[]).length){ try{ reprocess(id); }catch(e){} } }
+function svcCustTabsHtml(svc){ if(!svc.custTabs||!svc.custTabs.length) return "";
+  const cur=svcCustId(svc);
+  return `<div class="tabs" style="margin:-6px 0 12px">`+svc.custTabs.map(c=>
+    `<div class="tab ${c.id===cur?'active':''}" onclick="setSvcCust('${svc.id}','${c.id}')" title="${esc(c.full||c.name)}">\u{1F464} ${esc(c.name)}</div>`).join("")+`</div>`; }
 function viewRates(id){ svcTab[id]='rates'; go('service',id); }
 function svcTabsHtml(svc,tab,billLabel){
   return `<div class="tabs">
@@ -4443,6 +4568,7 @@ function renderService(v, svc){
     ? `<span class="tag green">Verified</span>` : `<span class="tag amber">Beta · confirm mapping</span>`;
 
   let h=svcTabsHtml(svc,tab);
+  if(svc.custTabs) h+=svcCustTabsHtml(svc);
 
   if(tab==='dockets'&&svc.docketTab){
     v.innerHTML=h+`<div class="banner info" style="margin-top:0">Reconcile the <b>SingPost posting dockets</b> (PDF) against the Linscomm invoice, then bill SG Link. Rates come from the <b>Rate cards</b> tab.</div><div id="docketwrap_${svc.id}"></div>`;
@@ -4469,7 +4595,8 @@ function renderService(v, svc){
         </div></div>`;
   }
   if(svc.rateCards){
-    svc.rateCards.forEach(c=>{
+    const _cc=svc.custTabs?svcCustId(svc):null;
+    svc.rateCards.filter(c=>!c.cust||c.cust===_cc).forEach(c=>{
       h+=`<div class="card"><div class="flexhead">
           <div><div class="step">Rate card</div><h3>${esc(c.label)} ${statusTag}</h3>
           <p class="sub">${c.rows.length} rows. Click ✎ Edit to change values, then Save. Delete asks to confirm.<br><span class="muted">To upload: an .xlsx/.csv with a single header row containing columns: <b>${c.cols.length>8? c.cols.slice(0,5).map(x=>esc(x.label)).join(", ")+" … "+esc(c.cols[c.cols.length-1].label)+"</b> ("+c.cols.length+" columns — ⭳ Download this card to get the exact template)" : c.cols.map(x=>esc(x.label)).join(", ")+"</b>."}</span></p></div>
@@ -5095,6 +5222,21 @@ function saveSettings(id){ if(!settingsEdit[id]) return;
   render(); toast(id,"Settings saved.","ok"); }
 
 /* ---------- Result rendering ---------- */
+/* one readable table of the shipments that need checking — click a row to filter the billing table */
+function gpIssueBox(id,rows,idKey,cur,cls,head,showPct){
+  const N=rows.length, show=rows.slice(0,50);
+  let h=`<div class="issuebox ${cls}"><p class="issuehead">⚠ ${esc(head)}. Click a shipment to filter the table.</p>
+    <div class="tbl-scroll" style="max-height:280px"><table><thead><tr><th>Shipment</th><th>Customer</th>
+      <th class="num">Billed</th><th class="num">Cost</th><th class="num">GP</th>${showPct?'<th class="num">GP %</th>':''}</tr></thead><tbody>`;
+  show.forEach(o=>{ const idv=String((idKey&&o[idKey])||o.customer||"?"); const gp=round2(o.amount-o.cost);
+    h+=`<tr><td style="white-space:nowrap"><a href="javascript:void(0)" onclick="filterResults('${id}','${esc(idv)}')"
+        style="font-weight:600;text-decoration:underline">${esc(idv)}</a></td>
+      <td>${esc(o.customer||"")}</td><td class="num">${money(o.amount,cur)}</td><td class="num">${money(o.cost,cur)}</td>
+      <td class="num"><b>${money(gp,cur)}</b></td>${showPct?`<td class="num">${o.amount?round2(gp/o.amount*100):0}%</td>`:''}</tr>`; });
+  h+=`</tbody></table></div>`;
+  if(N>show.length) h+=`<p class="issuefoot">Showing ${show.length} of ${N} — all of them are in the downloaded file.</p>`;
+  return h+`</div>`;
+}
 function renderResult(id){
   const svc=SVC[id], st=state[id], res=st.result;
   const el=document.getElementById("results_"+id);
@@ -5189,28 +5331,23 @@ function renderResult(id){
   if(res.lhIgnored) h+=`<div class="banner">${res.lhIgnored} input row(s) ignored as “not a shipment”. Click <b>Clear answers</b> in Review &amp; resolve to bring them back.</div>`;
   if(res.review.length && svc.lhResolve){ h+=lhResolveCardHtml(id,res,st); }
   else if(res.review.length && !svc.reviewResolve){
-    h+=`<div class="banner warn">⚠ <b>${res.review.length} row(s) need review</b> — excluded from the total:<br>`
-      + res.review.slice(0,8).map(r=>`• ${esc(r.ship||r.track||r.awb||r.ref||"?")} — ${esc(r.reason)}`).join("<br>")
-      + (res.review.length>8?`<br><i>…and ${res.review.length-8} more</i>`:"")
-      + `<br><button class="sm dl" style="margin-top:9px" onclick="downloadReview('${id}')">⭳ Download review list (.xlsx)</button></div>`;
+    h+=`<div class="issuebox miss"><p class="issuehead">⚠ ${res.review.length} shipment(s) need review — not billed, not in the total</p>
+      <div class="tbl-scroll" style="max-height:260px"><table><thead><tr><th>Shipment</th><th>Why it is not billed</th></tr></thead><tbody>`
+      + res.review.slice(0,50).map(r=>`<tr><td style="white-space:nowrap">${esc(r.ship||r.track||r.awb||r.awbx||r.ref||r.cn35||"?")}</td><td>${esc(r.reason)}</td></tr>`).join("")
+      + `</tbody></table></div>`
+      + (res.review.length>50?`<p class="issuefoot">Showing 50 of ${res.review.length} — the download has them all.</p>`:``)
+      + `<p class="issuefoot"><button class="sm dl" onclick="downloadReview('${id}')">⭳ Download review list (.xlsx)</button></p></div>`;
   }
 
   // negative-GP warning — list the shipments, click to filter
   if(totals.hasCost){
     const idKey=["awb","track","ship","cn35","docket","ref"].find(k=>res.lines.some(o=>o[k]!=null&&o[k]!==""));
     const negRows=res.lines.filter(o=>o.cost!=null&&round2(o.amount-o.cost)<0);
-    if(negRows.length){
-      const tags=negRows.slice(0,12).map(o=>{ const idv=String((idKey&&o[idKey])||o.customer||"?");
-        return `<a href="javascript:void(0)" onclick="filterResults('${id}','${esc(idv)}')" style="font-weight:600;text-decoration:underline">${esc(idv)}</a>`+
-          ` <span class="muted">(${o.customer?esc(String(o.customer))+" · ":""}billed ${money(o.amount)} vs cost ${money(o.cost)} = ${money(round2(o.amount-o.cost))})</span>`; });
-      h+=`<div class="banner warn">⚠ <b>${negRows.length} shipment(s) have negative GP</b> (billed below cost) — highlighted in red below. Click to filter:<br>${tags.join("<br>")}${negRows.length>12?`<br><span class="muted">…and ${negRows.length-12} more</span>`:""}</div>`;
-    }
+    if(negRows.length) h+=gpIssueBox(id,negRows,idKey,cur,"diff",
+      negRows.length+" shipment(s) billed below cost (negative GP) — highlighted in red in the table below",false);
     const warms=(SVC[id]&&SVC[id].gpWarnPct!=null)?res.lines.filter(o=>o.cost!=null&&o.amount>0&&round2(o.amount-o.cost)>=0&&((o.amount-o.cost)/o.amount*100)<SVC[id].gpWarnPct):[];
-    if(warms.length){
-      const wtags=warms.slice(0,12).map(o=>{ const idv=String((idKey&&o[idKey])||o.customer||"?");
-        return `<a href="javascript:void(0)" onclick="filterResults('${id}','${esc(idv)}')" style="font-weight:600;text-decoration:underline">${esc(idv)}</a> <span class="muted">(GP ${round2((o.amount-o.cost)/o.amount*100)}%)</span>`; });
-      h+=`<div class="banner warn">⚠ <b>${warms.length} shipment(s) with GP below ${SVC[id].gpWarnPct}%</b> — highlighted in amber below. Click to filter:<br>${wtags.join("<br>")}${warms.length>12?`<br><span class="muted">…and ${warms.length-12} more</span>`:""}</div>`;
-    }
+    if(warms.length) h+=gpIssueBox(id,warms,idKey,cur,"miss",
+      warms.length+" shipment(s) with GP below "+SVC[id].gpWarnPct+"% — highlighted in amber in the table below",true);
   }
 
   // table (with quick filter)
@@ -5348,7 +5485,7 @@ function monthEndPack(month){
 }
 async function downloadResult(id){
   const svc=SVC[id], st=state[id], res=st.result; if(!res||!res.lines.length){ alert("Nothing to download yet."); return; }
-  if(svc.buildWorkbook){ const bw=svc.buildWorkbook(res,st); const _fn=`${bw.name}_${monthLabel(res)}.xlsx`;
+  if(svc.buildWorkbook){ const bw=svc.buildWorkbook(res,st); const _fn=bw.nameHasMonth?`${bw.name}.xlsx`:`${bw.name}_${monthLabel(res)}.xlsx`;
     if(bw.styleRefs&&bw.styleRefs.length) saveU8(await xlsxStyleCells(XLSX.write(bw.wb,{type:"array",bookType:"xlsx"}), bw.styleRefs), _fn);
     else XLSX.writeFile(bw.wb, _fn);
     return; }
